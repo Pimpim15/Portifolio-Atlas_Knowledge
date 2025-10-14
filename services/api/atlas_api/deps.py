@@ -41,11 +41,22 @@ async def get_current_user(
 
     token = authorization.split(" ", 1)[1].strip()
     try:
+        raw_audience = settings.jwt_audience
+        if isinstance(raw_audience, (list, tuple, set)):
+            audience = next(iter(raw_audience), None)
+        else:
+            audience = raw_audience
+
+        decode_kwargs: dict[str, object] = {
+            "algorithms": [settings.jwt_algorithm],
+        }
+        if audience:
+            decode_kwargs["audience"] = audience
+
         payload = jwt.decode(
             token,
             settings.jwt_public_key,
-            algorithms=[settings.jwt_algorithm],
-            audience=settings.jwt_audience,
+            **decode_kwargs,  # type: ignore[arg-type]
         )
     except JWTError as exc:  # pragma: no cover - jose já cobre mensagens de erro
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc

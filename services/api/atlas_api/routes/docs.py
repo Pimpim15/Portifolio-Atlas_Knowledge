@@ -32,7 +32,8 @@ class DocumentOut(DocumentBase):
     updated_at: datetime | None
 
 
-@router.post("/", response_model=DocumentOut)
+@router.post("", response_model=DocumentOut)
+@router.post("/", response_model=DocumentOut, include_in_schema=False)
 async def create_document(
     payload: DocumentBase,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),

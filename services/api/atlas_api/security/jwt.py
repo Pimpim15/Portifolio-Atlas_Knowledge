@@ -28,12 +28,18 @@ def create_access_token(
     organization_ids: list[str] | None = None,
 ) -> str:
     settings = get_settings()
+    raw_audience = settings.jwt_audience
+    if isinstance(raw_audience, (list, tuple, set)):
+        audience: str | None = next(iter(raw_audience), None)
+    else:
+        audience = raw_audience
     exp = datetime.now(UTC) + timedelta(minutes=settings.access_token_ttl_minutes)
     payload = _base_payload(
         sub,
         email=email,
         roles=roles or ["viewer"],
         org_ids=organization_ids or [],
+        aud=audience,
         exp=int(exp.timestamp()),
     )
     return cast(str, jwt.encode(payload, settings.jwt_private_key, algorithm=settings.jwt_algorithm))

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from textwrap import dedent
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db.base import Base
 from .db.models import Document, Membership, Organization, RoleEnum, User
 from .deps import SessionLocal, engine
-from .security.passwords import hash_password
+from .security.passwords import hash_password, verify_password
 
 
 async def init_application() -> None:
@@ -24,23 +24,36 @@ async def init_application() -> None:
 
 
 async def _ensure_seed_data(session: AsyncSession) -> None:
-    existing = await session.execute(select(User).where(User.email == "admin@acme.com"))
-    user = existing.scalar_one_or_none()
-    if user is not None:
-        return
+    org_result = await session.execute(select(Organization).where(Organization.name == "Acme Corp"))
+    org = org_result.scalar_one_or_none()
+    if org is None:
+        org = Organization(name="Acme Corp")
+        session.add(org)
+        await session.flush()
 
-    org = Organization(name="Acme Corp")
-    admin_user = User(email="admin@acme.com", password_hash=hash_password("admin"))
-    membership = Membership(user=admin_user, organization=org, role=RoleEnum.ADMIN)
+    user_result = await session.execute(select(User).where(User.email == "admin@acme.com"))
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        user = User(email="admin@acme.com", password_hash=hash_password("admin"), is_active=True)
+        session.add(user)
+        await session.flush()
+    else:
+        if not verify_password("admin", user.password_hash):
+            user.password_hash = hash_password("admin")
+        user.is_active = True
 
-    session.add_all([org, admin_user, membership])
-    await session.flush()
+    membership_result = await session.execute(
+        select(Membership).where(and_(Membership.user_id == user.id, Membership.org_id == org.id))
+    )
+    membership = membership_result.scalar_one_or_none()
+    if membership is None:
+        membership = Membership(user_id=user.id, org_id=org.id, role=RoleEnum.ADMIN)
+        session.add(membership)
 
-    documents = [
-        Document(
-            org_id=org.id,
-            title="Runbook - Incidentes P1",
-            body=dedent(
+    seed_documents = [
+        {
+            "title": "Runbook - Incidentes P1",
+            "body": dedent(
                 """
                 ## Resumo
                 Procedimento oficial para resolução de incidentes prioritários (P1) na Acme Corp.
@@ -53,14 +66,11 @@ async def _ensure_seed_data(session: AsyncSession) -> None:
                 5. Assim que normalizado, abra ação post-mortem no Atlas.
                 """
             ).strip(),
-            tags=["incidentes", "runbook", "p1"],
-            created_by=admin_user.id,
-            updated_by=admin_user.id,
-        ),
-        Document(
-            org_id=org.id,
-            title="Política de Backup RDS",
-            body=dedent(
+            "tags": ["incidentes", "runbook", "p1"],
+        },
+        {
+            "title": "Política de Backup RDS",
+            "body": dedent(
                 """
                 ## Política
                 Backups automáticos executados diariamente às 02h00 UTC com retenção de 30 dias.
@@ -74,11 +84,26 @@ async def _ensure_seed_data(session: AsyncSession) -> None:
                 - Gestor de continuidade: continuidade@acme.com
                 """
             ).strip(),
-            tags=["políticas", "rds", "backup"],
-            created_by=admin_user.id,
-            updated_by=admin_user.id,
-        ),
+            "tags": ["políticas", "rds", "backup"],
+        },
     ]
 
-    session.add_all(documents)
+    for spec in seed_documents:
+        existing_doc = await session.execute(
+            select(Document).where(and_(Document.org_id == org.id, Document.title == spec["title"]))
+        )
+        if existing_doc.scalar_one_or_none() is not None:
+            continue
+
+        session.add(
+            Document(
+                org_id=org.id,
+                title=spec["title"],
+                body=spec["body"],
+                tags=spec["tags"],
+                created_by=user.id,
+                updated_by=user.id,
+            )
+        )
+
     await session.commit()

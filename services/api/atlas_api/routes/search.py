@@ -51,7 +51,8 @@ def _build_snippet(body: str, term: str) -> str:
     return f"{prefix}{snippet}{suffix}"
 
 
-@router.get("/", response_model=SearchResponse)
+@router.get("", response_model=SearchResponse)
+@router.get("/", response_model=SearchResponse, include_in_schema=False)
 async def search(
     q: str = Query("", description="Termo de busca"),
     tags: str | None = Query(None, description="Lista de tags separadas por vírgula"),
