@@ -1,5 +1,5 @@
-"""Tasks Celery."""
+"""API de enfileiramento de tarefas."""
 
-from .indexing import celery_app
+from .indexing import enqueue_document, enqueue_document_deletion
 
-__all__ = ["celery_app"]
+__all__ = ["enqueue_document", "enqueue_document_deletion"]

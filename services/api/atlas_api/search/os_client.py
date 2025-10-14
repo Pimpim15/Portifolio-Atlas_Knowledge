@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
 from ..config import get_settings
+from .mappings import DOC_MAPPING
 
 
 def get_client() -> OpenSearch:
@@ -31,3 +32,8 @@ def index_document(client: OpenSearch, index: str, document_id: str, payload: di
 
 def delete_document(client: OpenSearch, index: str, document_id: str) -> None:
     client.delete(index=index, id=document_id, ignore=[404])
+
+
+def ensure_index_exists(client: OpenSearch, index: str) -> None:
+    if not client.indices.exists(index=index):
+        client.indices.create(index=index, body=DOC_MAPPING)

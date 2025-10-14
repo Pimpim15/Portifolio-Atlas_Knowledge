@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
     opensearch_endpoint: str = Field("https://localhost:9200", alias="OPENSEARCH_ENDPOINT")
     sqs_queue_url: str | None = Field(None, alias="SQS_QUEUE_URL")
+    aws_region: str = Field("us-east-1", alias="AWS_REGION")
+    aws_access_key_id: str | None = Field(None, alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str | None = Field(None, alias="AWS_SECRET_ACCESS_KEY")
+    aws_endpoint_url: str | None = Field(None, alias="AWS_ENDPOINT_URL")
 
     jwt_issuer: str = Field("atlas-knowledge", alias="JWT_ISSUER")
     jwt_audience: list[str] = Field(default_factory=lambda: ["atlas-api"], alias="JWT_AUDIENCE")
