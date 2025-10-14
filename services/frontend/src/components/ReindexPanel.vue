@@ -19,6 +19,29 @@
       </div>
     </header>
 
+    <section class="reindex__summary" aria-label="Resumo dos jobs de reindexação">
+      <div class="reindex__summary-card">
+        <span class="reindex__summary-label">Jobs nas últimas execuções</span>
+        <strong class="reindex__summary-value">{{ summary.total }}</strong>
+      </div>
+      <div class="reindex__summary-card">
+        <span class="reindex__summary-label">Em andamento</span>
+        <strong class="reindex__summary-value status--running">{{ summary.running }}</strong>
+      </div>
+      <div class="reindex__summary-card">
+        <span class="reindex__summary-label">Concluídos</span>
+        <strong class="reindex__summary-value status--success">{{ summary.success }}</strong>
+      </div>
+      <div class="reindex__summary-card">
+        <span class="reindex__summary-label">Falhas</span>
+        <strong class="reindex__summary-value status--failed">{{ summary.failed }}</strong>
+      </div>
+      <div class="reindex__summary-card" v-if="summary.lastRun">
+        <span class="reindex__summary-label">Última execução</span>
+        <strong class="reindex__summary-value">{{ summary.lastRun }}</strong>
+      </div>
+    </section>
+
     <Transition name="fade">
       <div v-if="toast" class="reindex__toast" :class="`reindex__toast--${toast.kind}`">
         {{ toast.message }}
@@ -111,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import Modal from './Modal.vue';
 import api from '../utils/api';
 
@@ -163,6 +186,22 @@ const itemsHasMore = ref(false);
 const isLoadingItems = ref(false);
 const itemsError = ref('');
 const currentJob = ref<ReindexJobSummary | null>(null);
+
+const summary = computed(() => {
+  const total = jobs.value.length;
+  const running = jobs.value.filter((job) => job.status === 'running').length;
+  const failed = jobs.value.filter((job) => job.status === 'failed').length;
+  const success = jobs.value.filter((job) => job.status === 'success').length;
+  const lastJob = jobs.value[0];
+  const lastRun = lastJob ? formatDate(lastJob.created_at) : null;
+  return {
+    total,
+    running,
+    failed,
+    success,
+    lastRun,
+  };
+});
 
 let refreshTimer: number | undefined;
 
@@ -337,6 +376,34 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.reindex__summary {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.reindex__summary-card {
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.reindex__summary-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.reindex__summary-value {
+  font-size: 1.45rem;
+  font-weight: 700;
 }
 
 .reindex__empty {
