@@ -90,9 +90,42 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
 
     assert indexed and indexed[0][0] == document_payload["id"]
 
+    versions_response = client.get(f"/docs/{document_payload['id']}/versions", headers=headers)
+    assert versions_response.status_code == 200
+    versions = versions_response.json()
+    assert len(versions) == 1
+    assert versions[0]["version"] == 1
+    assert versions[0]["title"] == payload["title"]
+
     replay_response = client.post("/docs", json=payload, headers=headers)
     assert replay_response.status_code == 200
     assert replay_response.json() == response.json()
     assert len(events) == 1, "idempotent replay should not enqueue again"
+
+    update_payload = {
+        "title": "Guia de DR Atualizado",
+        "body": "Procedimentos de recuperação revisados",
+        "tags": ["dr", "revisado"],
+    }
+    update_headers = {"Idempotency-Key": "doc-update-1"}
+    update_response = client.put(
+        f"/docs/{document_payload['id']}",
+        json=update_payload,
+        headers=update_headers,
+    )
+
+    assert update_response.status_code == 200
+    updated_doc = update_response.json()
+    assert updated_doc["version"] == 2
+    assert len(events) == 2, "update should enqueue reindex message"
+
+    versions_after_update = client.get(f"/docs/{document_payload['id']}/versions", headers=headers)
+    assert versions_after_update.status_code == 200
+    versions_list = versions_after_update.json()
+    assert len(versions_list) == 2
+    assert versions_list[0]["version"] == 2
+    assert versions_list[1]["version"] == 1
+    assert versions_list[0]["title"] == update_payload["title"]
+    assert versions_list[1]["title"] == payload["title"]
 
     overrides.pop(get_current_user, None)

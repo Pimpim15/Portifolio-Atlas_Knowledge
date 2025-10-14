@@ -8,7 +8,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db.base import Base
-from .db.models import Document, Membership, Organization, RoleEnum, User
+from .db.models import Document, DocumentVersion, Membership, Organization, RoleEnum, User
 from .deps import SessionLocal, engine
 from .observability.logging import get_logger
 from .security.passwords import hash_password, verify_password
@@ -101,14 +101,24 @@ async def _ensure_seed_data(session: AsyncSession) -> None:
         if existing_doc.scalar_one_or_none() is not None:
             continue
 
+        doc = Document(
+            org_id=org.id,
+            title=spec["title"],
+            body=spec["body"],
+            tags=spec["tags"],
+            created_by=user.id,
+            updated_by=user.id,
+        )
+        session.add(doc)
+        await session.flush()
         session.add(
-            Document(
-                org_id=org.id,
-                title=spec["title"],
-                body=spec["body"],
-                tags=spec["tags"],
+            DocumentVersion(
+                document_id=doc.id,
+                version=doc.version,
+                title=doc.title,
+                body=doc.body,
+                tags=doc.tags,
                 created_by=user.id,
-                updated_by=user.id,
             )
         )
 

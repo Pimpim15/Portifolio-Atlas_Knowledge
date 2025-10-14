@@ -23,10 +23,11 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
+- Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
 
 ### ⚠️ Pendências
 
-- Versionamento de documentos, endpoint `/reindex` e _replays_ completos para OpenSearch.
+- Endpoint `/reindex` e _replays_ completos para OpenSearch.
 - Terraform com recursos reais (VPC com IGW/NAT, ALB HTTPS, Secrets Manager, autoscaling, DLQ SQS, sidecar ADOT).
 - Pipeline de deploy GitHub Actions com _plan/apply_ por ambiente, imagens versionadas e aprovações.
 - Dashboards/alertas CloudWatch, span/metrics do worker e publicação de screenshots/logs no README.
@@ -137,7 +138,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | Status | Entrega | Observações |
 | --- | --- | --- |
 | ✅ | Modelos SQLAlchemy + migrations iniciais | Dados base (usuários, organizações, documentos, memberships) prontos. |
-| ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Falta versionamento simples e idempotência. |
+| ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento básico, idempotência e rate-limit entregues. |
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando; reindexação completa ainda ausente. |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
@@ -148,7 +149,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 
 ## Backlog priorizado para Product Ready
 
-1. **Completar o pipeline de documentos**: versionamento simples, endpoint `/reindex`, replay paginado e instrumentação (traces/métricas) para API e worker.
+1. **Completar o pipeline de documentos**: endpoint `/reindex`, replay paginado e instrumentação (traces/métricas) para API e worker.
 2. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
 3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
 4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.

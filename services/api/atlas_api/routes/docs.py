@@ -3,13 +3,13 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..db.models import Document
+from ..db.models import Document, DocumentVersion
 from ..deps import CurrentUser, RBACGuard, get_db, get_redis
 from ..queue.publisher import enqueue_delete, enqueue_index
 from ..security.idempotency import build_idempotency_context
@@ -61,6 +61,17 @@ async def create_document(
         updated_by=current_user.id,
     )
     session.add(doc)
+    await session.flush()
+    session.add(
+        DocumentVersion(
+            document_id=doc.id,
+            version=doc.version,
+            title=doc.title,
+            body=doc.body,
+            tags=doc.tags,
+            created_by=current_user.id,
+        )
+    )
     await session.commit()
     await session.refresh(doc)
     enqueue_index(doc)
@@ -106,6 +117,17 @@ async def update_document(
     doc.updated_by = current_user.id
     doc.updated_at = datetime.utcnow()
 
+    await session.flush()
+    session.add(
+        DocumentVersion(
+            document_id=doc.id,
+            version=doc.version,
+            title=doc.title,
+            body=doc.body,
+            tags=doc.tags,
+            created_by=current_user.id,
+        )
+    )
     await session.commit()
     await session.refresh(doc)
     enqueue_index(doc)
@@ -168,3 +190,40 @@ async def delete_document(
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     idem_context.store_response(None, status_code=response.status_code)
     return response
+
+
+class DocumentVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    version: int
+    title: str
+    body: str
+    tags: list[str]
+    created_at: datetime
+    created_by: uuid.UUID | None
+
+
+@router.get("/{doc_id}/versions", response_model=list[DocumentVersionOut])
+@limiter.limit(settings.rate_limit_default)
+async def list_document_versions(
+    doc_id: uuid.UUID,
+    request: Request,
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    current_user: CurrentUser = Depends(RBACGuard(["viewer", "editor", "admin"])),
+    session: AsyncSession = Depends(get_db),
+) -> list[DocumentVersionOut]:
+    stmt = (
+        select(DocumentVersion)
+        .join(Document, DocumentVersion.document_id == Document.id)
+        .where(
+            DocumentVersion.document_id == doc_id,
+            Document.org_id.in_(current_user.organization_ids),
+        )
+        .order_by(DocumentVersion.version.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    versions = result.scalars().all()
+    return [DocumentVersionOut.model_validate(version) for version in versions]
