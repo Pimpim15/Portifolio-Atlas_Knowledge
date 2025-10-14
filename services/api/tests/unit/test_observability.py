@@ -9,6 +9,9 @@ def test_request_id_and_metrics_endpoint(client: TestClient) -> None:
     response = client.get("/healthz")
     assert response.status_code == 200
     assert "x-request-id" in response.headers
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert "content-security-policy" in response.headers
 
     metrics_response = client.get("/metrics")
     assert metrics_response.status_code == 200

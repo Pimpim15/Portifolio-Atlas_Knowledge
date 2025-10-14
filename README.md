@@ -4,7 +4,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 
 ## Visão geral
 
-- **API**: FastAPI + SQLAlchemy + Alembic, autenticação JWT RS256, RBAC; idempotência e rate-limit em implementação.
+- **API**: FastAPI + SQLAlchemy + Alembic, autenticação JWT RS256, RBAC, idempotência via Redis e rate-limit nas mutações.
 - **Worker**: Poller em Python consumindo SQS diretamente (boto3) para indexação no OpenSearch.
 - **Frontend**: Vue 3 + Pinia + Vite consumindo a API.
 - **Busca**: OpenSearch com analyzers PT/EN, sinônimos e filtros por tags, com _fallback_ automático para PostgreSQL.
@@ -22,10 +22,10 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
+- Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
 
 ### ⚠️ Pendências
 
-- Idempotência real nas mutações (`Idempotency-Key`), limitação de requisições por rota e cabeçalhos de segurança.
 - Versionamento de documentos, endpoint `/reindex` e _replays_ completos para OpenSearch.
 - Terraform com recursos reais (VPC com IGW/NAT, ALB HTTPS, Secrets Manager, autoscaling, DLQ SQS, sidecar ADOT).
 - Pipeline de deploy GitHub Actions com _plan/apply_ por ambiente, imagens versionadas e aprovações.
@@ -148,12 +148,11 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 
 ## Backlog priorizado para Product Ready
 
-1. **Fortalecer a camada de proteção da API**: aplicar limites por rota, implementar idempotência baseada em Redis e adicionar cabeçalhos de segurança + testes.
-2. **Completar o pipeline de documentos**: versionamento simples, endpoint `/reindex`, replay paginado e instrumentação (traces/métricas) para API e worker.
-3. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
-4. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
-5. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.
-6. **Benchmarks e hardening final**: cenários Locust/wrk documentados, ajustes de performance, checklist de segurança concluído e testes E2E do frontend.
+1. **Completar o pipeline de documentos**: versionamento simples, endpoint `/reindex`, replay paginado e instrumentação (traces/métricas) para API e worker.
+2. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
+3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
+4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.
+5. **Benchmarks e hardening final**: cenários Locust/wrk documentados, ajustes de performance, checklist de segurança concluído e testes E2E do frontend.
 
 ## Créditos
 

@@ -11,6 +11,7 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from redis import Redis  # type: ignore[import]
 
 from .config import get_settings
 from .db.models import Membership, RoleEnum, User
@@ -19,6 +20,7 @@ from .observability.logging import bind_context
 settings = get_settings()
 engine = create_async_engine(str(settings.database_url), pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+_redis_client: Redis | None = None
 
 
 class CurrentUser(BaseModel):
@@ -31,6 +33,13 @@ class CurrentUser(BaseModel):
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as session:
         yield session
+
+
+def get_redis() -> Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = Redis.from_url(settings.redis_url, decode_responses=False)
+    return _redis_client
 
 
 async def get_current_user(

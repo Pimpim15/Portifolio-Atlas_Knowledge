@@ -62,14 +62,14 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
 
     monkeypatch.setattr(queue_publisher, "_send_message", fake_send_message)
 
-    response = client.post(
-        "/docs",
-        json={
-            "title": "Guia de DR",
-            "body": "Procedimentos de recuperação",
-            "tags": ["dr"],
-        },
-    )
+    payload = {
+        "title": "Guia de DR",
+        "body": "Procedimentos de recuperação",
+        "tags": ["dr"],
+    }
+    headers = {"Idempotency-Key": "doc-create-1"}
+
+    response = client.post("/docs", json=payload, headers=headers)
 
     assert response.status_code == 200
     assert events, "message should be enqueued"
@@ -89,5 +89,10 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     worker_run._process_message(message, object())
 
     assert indexed and indexed[0][0] == document_payload["id"]
+
+    replay_response = client.post("/docs", json=payload, headers=headers)
+    assert replay_response.status_code == 200
+    assert replay_response.json() == response.json()
+    assert len(events) == 1, "idempotent replay should not enqueue again"
 
     overrides.pop(get_current_user, None)

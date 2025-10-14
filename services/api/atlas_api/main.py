@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded  # type: ignore[import]
 
 from .observability.logging import configure_logging
 from .observability.tracing import setup_tracing
+from .security.headers import SecurityHeadersMiddleware
 from .security.ratelimit import init_rate_limiter
 from .observability.middleware import ObservabilityMiddleware
 
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     from slowapi.middleware import SlowAPIMiddleware  # type: ignore[import]
 
     app.add_middleware(ObservabilityMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(SlowAPIMiddleware)
 
     from .routes import auth, docs, health, search, users

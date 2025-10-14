@@ -1,7 +1,5 @@
 """CRUD de documentos."""
 
-from __future__ import annotations
-
 import uuid
 from datetime import datetime
 
@@ -12,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..db.models import Document
-from ..deps import CurrentUser, RBACGuard, get_db
+from ..deps import CurrentUser, RBACGuard, get_db, get_redis
 from ..queue.publisher import enqueue_delete, enqueue_index
+from ..security.idempotency import build_idempotency_context
 from ..security.ratelimit import init_rate_limiter
 
 router = APIRouter()
@@ -41,11 +40,17 @@ class DocumentOut(DocumentBase):
 @router.post("/", response_model=DocumentOut, include_in_schema=False)
 @limiter.limit(settings.rate_limit_mutation)
 async def create_document(
-    request: Request,
     payload: DocumentBase,
+    request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
+    redis = Depends(get_redis),
 ) -> DocumentOut:
+    idem_context = await build_idempotency_context(request, redis, str(current_user.id))
+    replay = idem_context.replay_if_available()
+    if replay is not None:
+        return replay
+
     organization_id = current_user.organization_ids[0]
     doc = Document(
         org_id=organization_id,
@@ -59,7 +64,9 @@ async def create_document(
     await session.commit()
     await session.refresh(doc)
     enqueue_index(doc)
-    return DocumentOut.model_validate(doc)
+    document_out = DocumentOut.model_validate(doc)
+    idem_context.store_response(document_out, status_code=status.HTTP_200_OK)
+    return document_out
 
 
 class DocumentUpdate(DocumentBase):
@@ -70,11 +77,17 @@ class DocumentUpdate(DocumentBase):
 @limiter.limit(settings.rate_limit_mutation)
 async def update_document(
     doc_id: uuid.UUID,
-    request: Request,
     payload: DocumentUpdate,
+    request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
+    redis = Depends(get_redis),
 ) -> DocumentOut:
+    idem_context = await build_idempotency_context(request, redis, str(current_user.id))
+    replay = idem_context.replay_if_available()
+    if replay is not None:
+        return replay
+
     stmt = select(Document).where(
         Document.id == doc_id,
         Document.org_id.in_(current_user.organization_ids),
@@ -96,7 +109,9 @@ async def update_document(
     await session.commit()
     await session.refresh(doc)
     enqueue_index(doc)
-    return DocumentOut.model_validate(doc)
+    document_out = DocumentOut.model_validate(doc)
+    idem_context.store_response(document_out, status_code=status.HTTP_200_OK)
+    return document_out
 
 
 @router.get("/{doc_id}", response_model=DocumentOut)
@@ -127,7 +142,13 @@ async def delete_document(
     request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
+    redis = Depends(get_redis),
 ) -> Response:
+    idem_context = await build_idempotency_context(request, redis, str(current_user.id))
+    replay = idem_context.replay_if_available()
+    if replay is not None:
+        return replay
+
     stmt = select(Document).where(
         Document.id == doc_id,
         Document.org_id.in_(current_user.organization_ids),
@@ -144,4 +165,6 @@ async def delete_document(
 
     await session.commit()
     enqueue_delete(str(doc.id), str(doc.org_id))
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    idem_context.store_response(None, status_code=response.status_code)
+    return response
