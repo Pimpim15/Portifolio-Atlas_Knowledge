@@ -7,13 +7,13 @@
         <p class="dashboard__subtitle">Centralize runbooks, políticas e conhecimento crítico em um único lugar.</p>
       </div>
       <div class="dashboard__actions">
-        <button v-if="isAdmin" class="btn btn-secondary" @click="openCreateModal">Novo documento</button>
+        <button v-if="canManageDocs" class="btn btn-secondary" @click="openCreateModal">Novo documento</button>
         <button class="btn btn-ghost" @click="handleLogout">Sair</button>
       </div>
     </header>
 
     <section class="search-card">
-      <form class="search-card__form" @submit.prevent="performSearch(true)">
+  <form class="search-card__form" @submit.prevent="performSearch()">
         <div class="search-card__inputs">
           <input
             v-model="query"
@@ -71,6 +71,20 @@
       <template #actions>
         <button class="btn btn-ghost" @click="resultsModalOpen = false">Fechar</button>
         <button
+          v-if="selectedDoc && canManageDocs"
+          class="btn btn-secondary"
+          @click="handleEditSelected"
+        >
+          Editar
+        </button>
+        <button
+          v-if="selectedDoc && canManageDocs"
+          class="btn btn-danger"
+          @click="handleDeleteSelected"
+        >
+          Excluir
+        </button>
+        <button
           v-if="selectedDoc"
           class="btn btn-primary"
           @click="goToDocument(selectedDoc.id)"
@@ -89,8 +103,8 @@
     </Modal>
 
     <Modal :show="createModalOpen" @close="closeCreateModal">
-      <template #title>Novo documento</template>
-      <form class="create-form" @submit.prevent="submitCreate">
+      <template #title>{{ formMode === 'edit' ? 'Editar documento' : 'Novo documento' }}</template>
+      <form class="create-form" @submit.prevent="submitForm">
         <label>
           Título
           <input v-model="newDoc.title" class="input" placeholder="Ex.: Plano de resposta a incidentes" required />
@@ -106,14 +120,14 @@
         <div class="create-form__actions">
           <button type="button" class="btn btn-ghost" @click="closeCreateModal">Cancelar</button>
           <button type="submit" class="btn btn-primary" :disabled="isSubmitting">
-            {{ isSubmitting ? 'Salvando...' : 'Salvar documento' }}
+            {{ isSubmitting ? 'Salvando...' : formMode === 'edit' ? 'Salvar alterações' : 'Salvar documento' }}
           </button>
         </div>
       </form>
     </Modal>
 
     <Modal :show="successModalOpen" @close="successModalOpen = false">
-      <template #title>Documento criado com sucesso</template>
+      <template #title>{{ successModalTitle }}</template>
       <p class="modal-success">{{ successMessage }}</p>
       <template #actions>
         <button class="btn btn-primary" @click="successModalOpen = false">Fechar</button>
@@ -123,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import Modal from '../components/Modal.vue';
 import api from '../utils/api';
@@ -133,6 +147,13 @@ type SearchResult = {
   id: string;
   title: string;
   snippet: string;
+  tags: string[];
+};
+
+type DocumentDetail = {
+  id: string;
+  title: string;
+  body: string;
   tags: string[];
 };
 
@@ -150,7 +171,10 @@ const createModalOpen = ref(false);
 const successModalOpen = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
+const successModalTitle = ref('Sucesso');
 const selectedDoc = ref<SearchResult | null>(null);
+const formMode = ref<'create' | 'edit'>('create');
+const editingDocId = ref<string | null>(null);
 
 const newDoc = reactive({
   title: '',
@@ -159,9 +183,15 @@ const newDoc = reactive({
 });
 
 const displayName = computed(() => authStore.user?.email?.split('@')[0] ?? 'Explorer');
-const isAdmin = computed(() => authStore.user?.roles.includes('admin') ?? false);
+const canManageDocs = computed(() => authStore.user?.roles?.some((role) => ['admin', 'editor'].includes(role)) ?? false);
 
-const performSearch = async (openModal = false) => {
+const resetForm = () => {
+  newDoc.title = '';
+  newDoc.body = '';
+  newDoc.tags = '';
+};
+
+const performSearch = async () => {
   isLoading.value = true;
   try {
     const params: Record<string, string> = {};
@@ -169,10 +199,8 @@ const performSearch = async (openModal = false) => {
     if (tagsFilter.value.trim()) params.tags = tagsFilter.value.trim();
     const { data } = await api.get<{ results: SearchResult[] }>('/search', { params });
     results.value = data.results;
-    selectedDoc.value = data.results[0] ?? null;
-    if (openModal) {
-      resultsModalOpen.value = true;
-    }
+    selectedDoc.value = null;
+    resultsModalOpen.value = false;
   } catch (error: unknown) {
     const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail;
     errorMessage.value = detail ?? 'Não foi possível executar a busca. Tente novamente em instantes.';
@@ -193,17 +221,37 @@ const goToDocument = (id: string) => {
 };
 
 const openCreateModal = () => {
+  formMode.value = 'create';
+  editingDocId.value = null;
+  resetForm();
   createModalOpen.value = true;
 };
 
 const closeCreateModal = () => {
   createModalOpen.value = false;
-  newDoc.title = '';
-  newDoc.body = '';
-  newDoc.tags = '';
+  resetForm();
+  formMode.value = 'create';
+  editingDocId.value = null;
 };
 
-const submitCreate = async () => {
+const startEdit = async (docId: string) => {
+  try {
+    const { data } = await api.get<DocumentDetail>(`/docs/${docId}`);
+    formMode.value = 'edit';
+    editingDocId.value = data.id;
+    newDoc.title = data.title;
+    newDoc.body = data.body;
+    newDoc.tags = (data.tags ?? []).join(', ');
+    resultsModalOpen.value = false;
+    createModalOpen.value = true;
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+    errorMessage.value = detail ?? 'Não foi possível carregar o documento para edição.';
+    errorModalOpen.value = true;
+  }
+};
+
+const submitForm = async () => {
   if (!newDoc.title.trim() || !newDoc.body.trim()) {
     errorMessage.value = 'Título e conteúdo são obrigatórios.';
     errorModalOpen.value = true;
@@ -220,11 +268,18 @@ const submitCreate = async () => {
         .map((tag) => tag.trim())
         .filter(Boolean),
     };
-    const { data } = await api.post('/docs', payload);
-    successMessage.value = `"${data.title}" agora faz parte do seu catálogo.`;
+    if (formMode.value === 'edit' && editingDocId.value) {
+      const { data } = await api.put(`/docs/${editingDocId.value}`, payload);
+      successModalTitle.value = 'Documento atualizado';
+      successMessage.value = `"${data.title}" foi atualizado com sucesso.`;
+    } else {
+      const { data } = await api.post('/docs', payload);
+      successModalTitle.value = 'Documento criado com sucesso';
+      successMessage.value = `"${data.title}" agora faz parte do seu catálogo.`;
+    }
     successModalOpen.value = true;
     closeCreateModal();
-    await performSearch(false);
+    await performSearch();
   } catch (error: unknown) {
     const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail;
     errorMessage.value = detail ?? 'Não foi possível salvar o documento. Verifique os dados e tente novamente.';
@@ -234,10 +289,48 @@ const submitCreate = async () => {
   }
 };
 
+const handleEditSelected = async () => {
+  if (!selectedDoc.value) return;
+  await startEdit(selectedDoc.value.id);
+};
+
+const handleDeleteSelected = async () => {
+  if (!selectedDoc.value) return;
+  const confirmation = window.confirm('Tem certeza de que deseja excluir este documento?');
+  if (!confirmation) {
+    return;
+  }
+  try {
+    await api.delete(`/docs/${selectedDoc.value.id}`);
+    successModalTitle.value = 'Documento removido';
+    successMessage.value = 'Documento removido com sucesso.';
+    successModalOpen.value = true;
+    resultsModalOpen.value = false;
+    selectedDoc.value = null;
+    await performSearch();
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+    errorMessage.value = detail ?? 'Não foi possível excluir o documento. Tente novamente.';
+    errorModalOpen.value = true;
+  }
+};
+
 const handleLogout = () => {
   authStore.logout();
   router.push({ name: 'login' });
 };
+
+watch(query, (newValue, oldValue) => {
+  if (oldValue && newValue === '') {
+    performSearch();
+  }
+});
+
+watch(tagsFilter, (newValue, oldValue) => {
+  if (oldValue && newValue === '') {
+    performSearch();
+  }
+});
 
 onMounted(async () => {
   if (!authStore.user) {
@@ -247,7 +340,7 @@ onMounted(async () => {
       return;
     }
   }
-  await performSearch(false);
+  await performSearch();
 });
 </script>
 

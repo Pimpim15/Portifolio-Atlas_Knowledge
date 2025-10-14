@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +54,40 @@ async def create_document(
     return DocumentOut.model_validate(doc)
 
 
+class DocumentUpdate(DocumentBase):
+    pass
+
+
+@router.put("/{doc_id}", response_model=DocumentOut)
+async def update_document(
+    doc_id: uuid.UUID,
+    payload: DocumentUpdate,
+    current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
+    session: AsyncSession = Depends(get_db),
+) -> DocumentOut:
+    stmt = select(Document).where(
+        Document.id == doc_id,
+        Document.org_id.in_(current_user.organization_ids),
+        Document.deleted_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    doc = result.scalar_one_or_none()
+
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    doc.title = payload.title
+    doc.body = payload.body
+    doc.tags = payload.tags
+    doc.version += 1
+    doc.updated_by = current_user.id
+    doc.updated_at = datetime.utcnow()
+
+    await session.commit()
+    await session.refresh(doc)
+    return DocumentOut.model_validate(doc)
+
+
 @router.get("/{doc_id}", response_model=DocumentOut)
 async def get_document(
     doc_id: uuid.UUID,
@@ -71,3 +105,27 @@ async def get_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     return DocumentOut.model_validate(doc)
+
+
+@router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    doc_id: uuid.UUID,
+    current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    stmt = select(Document).where(
+        Document.id == doc_id,
+        Document.org_id.in_(current_user.organization_ids),
+        Document.deleted_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    doc = result.scalar_one_or_none()
+
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    doc.deleted_at = datetime.utcnow()
+    doc.updated_by = current_user.id
+
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

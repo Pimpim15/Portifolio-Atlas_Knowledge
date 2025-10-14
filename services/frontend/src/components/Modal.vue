@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/multi-word-component-names -->
 <template>
   <Teleport to="body" v-if="props.show">
     <div class="overlay" @click.self="emit('close')">
