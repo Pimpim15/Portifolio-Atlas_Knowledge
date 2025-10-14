@@ -13,7 +13,7 @@ provider "aws" {
 }
 
 module "vpc" {
-  source = "./modules/vpc"
+  source      = "./modules/vpc"
   environment = var.environment
 }
 
@@ -47,12 +47,12 @@ module "ecs" {
 }
 
 module "alb" {
-  source             = "./modules/alb"
-  environment        = var.environment
-  vpc_id             = module.vpc.vpc_id
-  public_subnet_ids  = module.vpc.public_subnet_ids
-  api_target_group   = module.ecs.api_target_group
-  fe_target_group    = module.ecs.frontend_target_group
+  source            = "./modules/alb"
+  environment       = var.environment
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+  api_target_group  = module.ecs.api_target_group
+  fe_target_group   = module.ecs.frontend_target_group
 }
 
 module "oidc" {
