@@ -99,6 +99,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
 
 - Logs JSON com structlog (campos: trace_id, span_id, route, org_id, user, status, latency).
 - OpenTelemetry instrumentando FastAPI, SQLAlchemy, HTTP clients. Export via OTLP para collector.
+- Middleware aplica `X-Request-ID` em todas as respostas e emite métricas Prometheus (`/metrics`).
 - Dashboards CloudWatch: latência p95, erros 5xx, backlog SQS, métricas RDS, saúde do OpenSearch.
 
 ## Segurança

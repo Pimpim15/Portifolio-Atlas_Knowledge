@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
 
 from services.api.atlas_api.config import get_settings
+from services.api.atlas_api.observability.logging import configure_logging, get_logger
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client
 from services.api.atlas_api.search.mappings import DOC_INDEX
 from services.api.atlas_api.search.os_client import (
@@ -19,7 +19,7 @@ from services.api.atlas_api.search.os_client import (
     index_document,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(component="worker")
 
 
 def _process_message(body: dict[str, Any], client: Any) -> None:
@@ -30,14 +30,14 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
         if not isinstance(document, dict):
             logger.warning(
                 "worker_invalid_document_payload",
-                extra={"payload": body},
+                payload=body,
             )
             return
         document_id = document.get("id")
         if not document_id:
             logger.warning(
                 "worker_missing_document_id",
-                extra={"payload": document},
+                payload=document,
             )
             return
         index_document(client, DOC_INDEX, document_id, document)
@@ -46,14 +46,14 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
         if not document_id:
             logger.warning(
                 "worker_missing_document_id_delete",
-                extra={"payload": body},
+                payload=body,
             )
             return
         delete_document(client, DOC_INDEX, document_id)
     else:
         logger.warning(
             "worker_unknown_action",
-            extra={"action": action},
+            action=action,
         )
 
 
@@ -80,7 +80,7 @@ def _poll_loop() -> None:
         except (BotoCoreError, ClientError) as exc:  # pragma: no cover - runtime failure
             logger.exception(
                 "sqs_receive_failed",
-                extra={"error": str(exc)},
+                error=str(exc),
             )
             time.sleep(5)
             continue
@@ -95,7 +95,7 @@ def _poll_loop() -> None:
             if not receipt_handle or not body_raw:
                 logger.warning(
                     "worker_missing_body_or_receipt",
-                    extra={"message": message},
+                    message=message,
                 )
                 continue
 
@@ -104,7 +104,7 @@ def _poll_loop() -> None:
             except json.JSONDecodeError:
                 logger.warning(
                     "worker_invalid_json",
-                    extra={"body": body_raw},
+                    body=body_raw,
                 )
                 client.delete_message(QueueUrl=settings.sqs_queue_url, ReceiptHandle=receipt_handle)
                 continue
@@ -114,7 +114,7 @@ def _poll_loop() -> None:
             except Exception:  # pragma: no cover - processing failure
                 logger.exception(
                     "worker_processing_failed",
-                    extra={"payload": payload},
+                    payload=payload,
                 )
             finally:
                 try:
@@ -122,12 +122,12 @@ def _poll_loop() -> None:
                 except (BotoCoreError, ClientError):  # pragma: no cover
                     logger.exception(
                         "sqs_delete_failed",
-                        extra={"payload": payload},
+                        payload=payload,
                     )
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     logger.info("worker_started")
     while True:
         _poll_loop()

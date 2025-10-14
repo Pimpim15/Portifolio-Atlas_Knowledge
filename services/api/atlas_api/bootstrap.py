@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from textwrap import dedent
 
 from sqlalchemy import and_, select
@@ -11,11 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .db.base import Base
 from .db.models import Document, Membership, Organization, RoleEnum, User
 from .deps import SessionLocal, engine
+from .observability.logging import get_logger
 from .security.passwords import hash_password, verify_password
 from .search.mappings import DOC_INDEX
 from .search.os_client import ensure_index_exists, get_client
 
-logger = logging.getLogger(__name__)
+logger = get_logger(component="api", module="bootstrap")
 
 
 async def init_application() -> None:

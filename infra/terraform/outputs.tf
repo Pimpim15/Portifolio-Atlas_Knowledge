@@ -9,3 +9,7 @@ output "alb_dns" {
 output "api_service_name" {
   value = module.ecs.api_service_name
 }
+
+output "worker_service_name" {
+  value = module.ecs.worker_service_name
+}

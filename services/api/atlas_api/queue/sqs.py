@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from functools import lru_cache
 from typing import Any
 from urllib.parse import urlparse
@@ -11,8 +10,9 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from ..config import get_settings
+from ..observability.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(component="api", module="queue.sqs")
 
 
 @lru_cache(maxsize=1)
@@ -48,6 +48,6 @@ def ensure_queue_exists(queue_url: str | None = None) -> None:
         try:
             client.create_queue(QueueName=queue_name)
         except (BotoCoreError, ClientError) as exc:  # pragma: no cover - infra failure
-            logger.exception("sqs_create_queue_failed", queue_name=queue_name, exc_info=exc)
+            logger.exception("sqs_create_queue_failed", queue_name=queue_name, error=str(exc))
     except (BotoCoreError, ClientError) as exc:  # pragma: no cover - infra failure
-        logger.exception("sqs_get_queue_attributes_failed", queue_url=target_url, exc_info=exc)
+        logger.exception("sqs_get_queue_attributes_failed", queue_url=target_url, error=str(exc))

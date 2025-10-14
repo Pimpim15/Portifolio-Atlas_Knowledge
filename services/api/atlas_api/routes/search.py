@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -15,9 +14,10 @@ from ..db.models import Document
 from ..deps import CurrentUser, RBACGuard, get_db
 from ..search.mappings import DOC_INDEX
 from ..search.os_client import ensure_index_exists, get_client
+from ..observability.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(component="api", module="search")
 
 
 class SearchResponseItem(BaseModel):

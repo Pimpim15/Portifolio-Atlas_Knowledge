@@ -43,6 +43,7 @@ module "ecs" {
   rds_secret_arn      = module.rds.secret_arn
   opensearch_endpoint = module.opensearch.endpoint
   sqs_queue_arn       = module.sqs.queue_arn
+  sqs_queue_url       = module.sqs.queue_url
 }
 
 module "alb" {

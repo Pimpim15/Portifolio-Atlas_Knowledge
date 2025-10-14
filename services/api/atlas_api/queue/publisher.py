@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
 from ..config import get_settings
 from ..db.models import Document
+from ..observability.logging import get_logger
 from ..search.serializers import serialize_document
 from .sqs import ensure_queue_exists, get_sqs_client
 
-logger = logging.getLogger(__name__)
+logger = get_logger(component="api", module="queue.publisher")
 
 DOCUMENT_EVENT_SOURCE = "atlas.documents"
 
@@ -27,7 +27,7 @@ def _send_message(payload: dict[str, Any]) -> None:
     try:
         client.send_message(QueueUrl=settings.sqs_queue_url, MessageBody=json.dumps(payload))
     except Exception as exc:  # pragma: no cover - IO failure
-        logger.exception("sqs_send_failed", action=payload.get("action"), exc_info=exc)
+        logger.exception("sqs_send_failed", action=payload.get("action"), error=str(exc))
 
 
 def enqueue_index(document: Document) -> None:

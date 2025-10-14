@@ -3,10 +3,13 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .observability.logging import configure_logging
 from .observability.tracing import setup_tracing
 from .security.ratelimit import init_rate_limiter
+from .observability.middleware import ObservabilityMiddleware
 
 
 def create_app() -> FastAPI:
@@ -20,6 +23,7 @@ def create_app() -> FastAPI:
 
     from slowapi.middleware import SlowAPIMiddleware
 
+    app.add_middleware(ObservabilityMiddleware)
     app.add_middleware(SlowAPIMiddleware)
 
     from .routes import auth, docs, health, search, users
@@ -29,6 +33,10 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/users", tags=["users"])
     app.include_router(docs.router, prefix="/docs", tags=["docs"])
     app.include_router(search.router, prefix="/search", tags=["search"])
+
+    @app.get("/metrics")
+    def metrics_endpoint() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     from .bootstrap import init_application
 
