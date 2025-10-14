@@ -1,5 +1,7 @@
 """Ponto de entrada FastAPI."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from .observability.logging import configure_logging
@@ -30,9 +32,12 @@ def create_app() -> FastAPI:
 
     from .bootstrap import init_application
 
-    @app.on_event("startup")
-    async def _startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
         await init_application()
+        yield
+
+    app.router.lifespan_context = lifespan
 
     return app
 

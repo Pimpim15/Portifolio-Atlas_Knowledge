@@ -21,7 +21,6 @@ pydantic-settings = "^2.4.0"
 python-jose = "^3.3.0"
 passlib = "^1.7.4"
 redis = "^5.0.4"
-celery = { version = "^5.4.0", extras = ["redis"] }
 slowapi = "^0.1.9"
 structlog = "^24.1.0"
 opensearch-py = "^2.5.0"
