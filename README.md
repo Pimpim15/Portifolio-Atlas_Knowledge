@@ -29,6 +29,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
 - Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros, painel administrativo no frontend e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 - Módulo Terraform de SQS com DLQ, SSE e alarmes CloudWatch para o pipeline de documentos.
+- Módulo Terraform de VPC com IGW, NAT Gateway, sub-redes públicas/privadas e rotas gerenciadas.
 
 ### ⚠️ Pendências
 
@@ -155,7 +156,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
-| 🚧 | Terraform com recursos reais | Módulos criados; SQS já conta com DLQ, SSE e alarmes. Faltam VPC completa, ALB HTTPS, Secrets, autoscaling. |
+| 🚧 | Terraform com recursos reais | SQS e VPC maduras (DLQ, SSE, IGW, NAT). Pendências: ALB HTTPS, Secrets Manager, autoscaling ECS, parametrização multi-AZ. |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existente, mas depende de variáveis/infra reais e etapas de approval. |
 | ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
 | ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
