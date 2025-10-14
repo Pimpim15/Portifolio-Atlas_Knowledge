@@ -9,7 +9,12 @@ from typing import Any
 from botocore.exceptions import BotoCoreError, ClientError
 
 from services.api.atlas_api.config import get_settings
-from services.api.atlas_api.observability.logging import configure_logging, get_logger
+from services.api.atlas_api.observability.logging import (
+    bind_context,
+    configure_logging,
+    get_logger,
+    unbind_context,
+)
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client
 from services.api.atlas_api.search.mappings import DOC_INDEX
 from services.api.atlas_api.search.os_client import (
@@ -110,6 +115,11 @@ def _poll_loop() -> None:
                 continue
 
             try:
+                bind_context(
+                    message_id=message.get("MessageId"),
+                    receipt_handle=receipt_handle,
+                    queue_url=settings.sqs_queue_url,
+                )
                 _process_message(payload, os_client)
             except Exception:  # pragma: no cover - processing failure
                 logger.exception(
@@ -117,6 +127,7 @@ def _poll_loop() -> None:
                     payload=payload,
                 )
             finally:
+                unbind_context("message_id", "receipt_handle", "queue_url")
                 try:
                     client.delete_message(QueueUrl=settings.sqs_queue_url, ReceiptHandle=receipt_handle)
                 except (BotoCoreError, ClientError):  # pragma: no cover

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from .config import get_settings
 from .db.models import Membership, RoleEnum, User
+from .observability.logging import bind_context
 
 settings = get_settings()
 engine = create_async_engine(str(settings.database_url), pool_pre_ping=True)
@@ -115,6 +116,13 @@ async def get_current_user(
         if org_id not in unique_org_ids:
             unique_org_ids.append(org_id)
 
+    bind_context(
+        user_id=str(user.id),
+        user_email=user.email,
+        user_roles=normalized_roles,
+        organization_ids=[str(org_id) for org_id in unique_org_ids],
+    )
+
     return CurrentUser(id=user.id, email=user.email, roles=normalized_roles, organization_ids=unique_org_ids)
 
 
@@ -127,4 +135,5 @@ class RBACGuard:
     def __call__(self, user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
         if not set(user.roles).intersection(self.roles):
             raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+        bind_context(authorized_roles=sorted(self.roles))
         return user
