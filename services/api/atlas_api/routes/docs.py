@@ -243,16 +243,16 @@ async def trigger_reindex(
                 job_id=job.id,
                 document_id=doc.id,
                 version=doc.version,
-                status=ReindexJobStatus.SUCCESS,
+                status=ReindexJobStatus.PENDING,
             )
             session.add(item)
             job_items.append(item)
 
-        if total:
-            job.processed_documents = total
-            job.status = ReindexJobStatus.SUCCESS
-
         await session.flush()
+
+        if not total:
+            job.processed_documents = 0
+
         await session.commit()
         await session.refresh(job)
 
@@ -283,7 +283,10 @@ async def trigger_reindex(
         response_payload = ReindexJobOut.model_validate(job)
 
     duration = time.perf_counter() - start
-    REINDEX_JOB_COUNT.labels(status=job_status_value).inc()
+    if total:
+        REINDEX_JOB_COUNT.labels(status=ReindexJobStatus.RUNNING.value).inc()
+    else:
+        REINDEX_JOB_COUNT.labels(status=ReindexJobStatus.SUCCESS.value).inc()
     REINDEX_JOB_LATENCY.labels(status=job_status_value).observe(duration)
 
     if response_payload is None:  # pragma: no cover - defensive

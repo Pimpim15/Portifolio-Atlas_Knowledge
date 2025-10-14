@@ -132,8 +132,11 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     reindex_response = client.post("/docs/reindex", headers=headers)
     assert reindex_response.status_code == 202
     job_payload = reindex_response.json()
-    assert job_payload["processed_documents"] == job_payload["total_documents"]
-    assert job_payload["status"] == "success"
+    if job_payload["total_documents"]:
+        assert job_payload["processed_documents"] == 0
+        assert job_payload["status"] == "running"
+    else:  # pragma: no cover - defensive for empty datasets
+        assert job_payload["status"] == "success"
     assert len(events) == pre_reindex_events + job_payload["total_documents"]
 
     reindex_events = events[pre_reindex_events:]
@@ -142,10 +145,17 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     assert None not in job_item_ids
     assert len(job_item_ids) == len(reindex_events)
 
+    for event in reindex_events:
+        worker_run._process_message(event, object())
+
     reindex_list = client.get("/docs/reindex?limit=10&offset=0", headers=headers)
     assert reindex_list.status_code == 200, reindex_list.json()
     listed_jobs = reindex_list.json()
-    assert any(job["id"] == job_payload["id"] for job in listed_jobs)
+    matched_jobs = [job for job in listed_jobs if job["id"] == job_payload["id"]]
+    assert matched_jobs, "reindex job should be listed"
+    matched_job = matched_jobs[0]
+    assert matched_job["processed_documents"] == matched_job["total_documents"]
+    assert matched_job["status"] == "success"
 
     items_page = client.get(
         f"/docs/reindex/{job_payload['id']}/items?limit=1",

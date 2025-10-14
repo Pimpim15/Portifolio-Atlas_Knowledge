@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import time
+import uuid
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import]
@@ -23,6 +24,11 @@ from services.api.atlas_api.observability.metrics import (
 )
 from services.api.atlas_api.observability.tracing import setup_tracing
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client
+from services.api.atlas_api.reindex.progress import (
+    mark_job_item_error,
+    mark_job_item_started,
+    mark_job_item_success,
+)
 from services.api.atlas_api.search.mappings import DOC_INDEX
 from services.api.atlas_api.search.os_client import (
     delete_document,
@@ -66,44 +72,123 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
 
     start = time.perf_counter()
     success = False
+    error_message: str | None = None
+
+    job_uuid: uuid.UUID | None = None
+    job_item_uuid: uuid.UUID | None = None
+
+    job_id_raw = body.get("job_id")
+    job_item_id_raw = body.get("job_item_id")
+
+    if isinstance(job_id_raw, uuid.UUID):
+        job_uuid = job_id_raw
+    elif isinstance(job_id_raw, str):
+        try:
+            job_uuid = uuid.UUID(job_id_raw)
+        except ValueError:
+            logger.warning("worker_invalid_job_id", job_id=job_id_raw)
+
+    if isinstance(job_item_id_raw, uuid.UUID):
+        job_item_uuid = job_item_id_raw
+    elif isinstance(job_item_id_raw, str):
+        try:
+            job_item_uuid = uuid.UUID(job_item_id_raw)
+        except ValueError:
+            logger.warning("worker_invalid_job_item_id", job_item_id=job_item_id_raw)
+
+    job_context = job_uuid is not None and job_item_uuid is not None
 
     with span_cm:
+        if job_context:
+            try:
+                mark_job_item_started(job_uuid, job_item_uuid)
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception(
+                    "worker_mark_job_item_started_failed",
+                    job_id=str(job_uuid),
+                    job_item_id=str(job_item_uuid),
+                )
+
         if action == "index":
             if document is None:
                 logger.warning(
                     "worker_invalid_document_payload",
                     payload=body,
                 )
+                error_message = "invalid_document_payload"
             elif not document_id:
                 logger.warning(
                     "worker_missing_document_id",
                     payload=document,
                 )
+                error_message = "missing_document_id"
             else:
-                index_document(client, DOC_INDEX, document_id, document)
-                WORKER_ACTION_COUNT.labels(action="index").inc()
-                success = True
+                try:
+                    index_document(client, DOC_INDEX, document_id, document)
+                except Exception as exc:  # pragma: no cover - external client failure
+                    error_message = str(exc)
+                    logger.exception(
+                        "worker_index_document_failed",
+                        document_id=document_id,
+                        job_id=str(job_uuid) if job_uuid else None,
+                        job_item_id=str(job_item_uuid) if job_item_uuid else None,
+                    )
+                else:
+                    WORKER_ACTION_COUNT.labels(action="index").inc()
+                    success = True
         elif action == "delete":
             if not document_id:
                 logger.warning(
                     "worker_missing_document_id_delete",
                     payload=body,
                 )
+                error_message = "missing_document_id"
             else:
-                delete_document(client, DOC_INDEX, str(document_id))
-                WORKER_ACTION_COUNT.labels(action="delete").inc()
-                success = True
+                try:
+                    delete_document(client, DOC_INDEX, str(document_id))
+                except Exception as exc:  # pragma: no cover - external client failure
+                    error_message = str(exc)
+                    logger.exception(
+                        "worker_delete_document_failed",
+                        document_id=document_id,
+                    )
+                else:
+                    WORKER_ACTION_COUNT.labels(action="delete").inc()
+                    success = True
         else:
             logger.warning(
                 "worker_unknown_action",
                 action=action,
             )
             WORKER_ACTION_COUNT.labels(action=action_label).inc()
+            error_message = "unknown_action"
 
     elapsed = time.perf_counter() - start
     WORKER_PROCESSING_LATENCY.labels(action_label).observe(elapsed)
     if not success:
         WORKER_PROCESSING_ERRORS.labels(action_label).inc()
+
+    if job_context:
+        if success:
+            try:
+                mark_job_item_success(job_uuid, job_item_uuid)
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception(
+                    "worker_mark_job_item_success_failed",
+                    job_id=str(job_uuid),
+                    job_item_id=str(job_item_uuid),
+                )
+        else:
+            failure_reason = error_message or "worker_processing_failed"
+            try:
+                mark_job_item_error(job_uuid, job_item_uuid, failure_reason)
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception(
+                    "worker_mark_job_item_error_failed",
+                    job_id=str(job_uuid),
+                    job_item_id=str(job_item_uuid),
+                    failure_reason=failure_reason,
+                )
 
 
 def _poll_loop() -> None:

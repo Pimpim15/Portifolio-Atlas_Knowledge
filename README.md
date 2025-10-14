@@ -24,7 +24,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
 - Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
-- Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
+- Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 
 ### ⚠️ Pendências
 
@@ -149,7 +149,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 
 ## Backlog priorizado para Product Ready
 
-1. **Completar o pipeline de documentos**: atualizar progresso dos jobs direto do worker, expor estados parciais/erros e enriquecer alertas automáticos.
+1. **Completar o pipeline de documentos**: expor progresso/erros de reindex na UI, adicionar paginação/scroll em replays OpenSearch e acionar alertas automáticos.
 2. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
 3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
 4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.
