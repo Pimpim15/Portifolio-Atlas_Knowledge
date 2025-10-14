@@ -5,9 +5,9 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 ## Visão geral
 
 - **API**: FastAPI + SQLAlchemy + Alembic, autenticação JWT RS256, RBAC, idempotência e rate-limit.
-- **Worker**: Celery consumindo SQS para pipeline assíncrona de indexação no OpenSearch.
+- **Worker**: Poller em Python consumindo SQS diretamente (boto3) para indexação no OpenSearch.
 - **Frontend**: Vue 3 + Pinia + Vite consumindo a API.
-- **Busca**: OpenSearch com analyzers PT/EN, sinônimos e filtros por tags.
+- **Busca**: OpenSearch com analyzers PT/EN, sinônimos e filtros por tags, com _fallback_ automático para PostgreSQL.
 - **Infraestrutura**: Terraform para VPC, ECS Fargate, RDS, OpenSearch, SQS, Secrets Manager, IAM OIDC.
 - **Observabilidade**: OpenTelemetry → ADOT → AWS X-Ray, CloudWatch Logs, métricas e alarmes.
 - **Qualidade**: pytest (unit, integração, e2e), cobertura ≥ 85%, lint (ruff), mypy, pre-commit, Trivy e CodeQL.
@@ -113,9 +113,9 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 
 ## Roadmap inicial
 
-- [ ] Implementar modelos SQLAlchemy e migrations iniciais.
-- [ ] Construir roteadores (auth, users, docs, search) com RBAC.
-- [ ] Configurar Celery + pipeline SQS → OpenSearch.
+- [x] Implementar modelos SQLAlchemy e migrations iniciais.
+- [x] Construir roteadores (auth, users, docs, search) com RBAC.
+- [x] Configurar pipeline SQS → OpenSearch com worker dedicado.
 - [ ] Implementar UI Vue (login, CRUD docs, busca, dashboards).
 - [ ] Completar módulos Terraform com recursos reais.
 - [ ] Automatizar deploy dev (GitHub Actions + Terraform).

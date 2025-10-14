@@ -28,21 +28,33 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
     if action == "index":
         document = body.get("document")
         if not isinstance(document, dict):
-            logger.warning("worker_invalid_document_payload", payload=body)
+            logger.warning(
+                "worker_invalid_document_payload",
+                extra={"payload": body},
+            )
             return
         document_id = document.get("id")
         if not document_id:
-            logger.warning("worker_missing_document_id", payload=document)
+            logger.warning(
+                "worker_missing_document_id",
+                extra={"payload": document},
+            )
             return
         index_document(client, DOC_INDEX, document_id, document)
     elif action == "delete":
         document_id = body.get("document_id")
         if not document_id:
-            logger.warning("worker_missing_document_id_delete", payload=body)
+            logger.warning(
+                "worker_missing_document_id_delete",
+                extra={"payload": body},
+            )
             return
         delete_document(client, DOC_INDEX, document_id)
     else:
-        logger.warning("worker_unknown_action", action=action)
+        logger.warning(
+            "worker_unknown_action",
+            extra={"action": action},
+        )
 
 
 def _poll_loop() -> None:
@@ -66,7 +78,10 @@ def _poll_loop() -> None:
                 VisibilityTimeout=60,
             )
         except (BotoCoreError, ClientError) as exc:  # pragma: no cover - runtime failure
-            logger.exception("sqs_receive_failed", exc_info=exc)
+            logger.exception(
+                "sqs_receive_failed",
+                extra={"error": str(exc)},
+            )
             time.sleep(5)
             continue
 
@@ -78,25 +93,37 @@ def _poll_loop() -> None:
             receipt_handle = message.get("ReceiptHandle")
             body_raw = message.get("Body")
             if not receipt_handle or not body_raw:
-                logger.warning("worker_missing_body_or_receipt", message=message)
+                logger.warning(
+                    "worker_missing_body_or_receipt",
+                    extra={"message": message},
+                )
                 continue
 
             try:
                 payload = json.loads(body_raw)
             except json.JSONDecodeError:
-                logger.warning("worker_invalid_json", body=body_raw)
+                logger.warning(
+                    "worker_invalid_json",
+                    extra={"body": body_raw},
+                )
                 client.delete_message(QueueUrl=settings.sqs_queue_url, ReceiptHandle=receipt_handle)
                 continue
 
             try:
                 _process_message(payload, os_client)
             except Exception:  # pragma: no cover - processing failure
-                logger.exception("worker_processing_failed", payload=payload)
+                logger.exception(
+                    "worker_processing_failed",
+                    extra={"payload": payload},
+                )
             finally:
                 try:
                     client.delete_message(QueueUrl=settings.sqs_queue_url, ReceiptHandle=receipt_handle)
                 except (BotoCoreError, ClientError):  # pragma: no cover
-                    logger.exception("sqs_delete_failed", payload=payload)
+                    logger.exception(
+                        "sqs_delete_failed",
+                        extra={"payload": payload},
+                    )
 
 
 def main() -> None:
