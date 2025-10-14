@@ -10,10 +10,31 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import logging
+
 from ..db.models import Document
 from ..deps import CurrentUser, RBACGuard, get_db
+from ..search.serializers import serialize_document
+from ..tasks.indexing import delete_document_task, index_document_task
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
+
+
+def _queue_index_document(document: Document) -> None:
+    payload = serialize_document(document)
+    try:
+        index_document_task.apply_async(args=[payload], ignore_result=True)
+    except Exception:  # pragma: no cover - fallback safety
+        logger.warning("index_document_task.enqueue_failed", document_id=str(document.id))
+
+
+def _queue_delete_document(document_id: uuid.UUID) -> None:
+    try:
+        delete_document_task.apply_async(args=[str(document_id)], ignore_result=True)
+    except Exception:  # pragma: no cover - fallback safety
+        logger.warning("delete_document_task.enqueue_failed", document_id=str(document_id))
 
 
 class DocumentBase(BaseModel):
@@ -51,6 +72,7 @@ async def create_document(
     session.add(doc)
     await session.commit()
     await session.refresh(doc)
+    _queue_index_document(doc)
     return DocumentOut.model_validate(doc)
 
 
@@ -85,6 +107,7 @@ async def update_document(
 
     await session.commit()
     await session.refresh(doc)
+    _queue_index_document(doc)
     return DocumentOut.model_validate(doc)
 
 
@@ -128,4 +151,5 @@ async def delete_document(
     doc.updated_by = current_user.id
 
     await session.commit()
+    _queue_delete_document(doc.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

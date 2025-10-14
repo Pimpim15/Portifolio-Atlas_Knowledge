@@ -27,3 +27,7 @@ def get_client() -> OpenSearch:
 
 def index_document(client: OpenSearch, index: str, document_id: str, payload: dict[str, Any]) -> None:
     client.index(index=index, id=document_id, body=payload)
+
+
+def delete_document(client: OpenSearch, index: str, document_id: str) -> None:
+    client.delete(index=index, id=document_id, ignore=[404])
