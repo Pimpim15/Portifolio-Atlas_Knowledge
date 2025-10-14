@@ -24,7 +24,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
 - Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
-- Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
+- Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros, painel administrativo no frontend e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 
 ### ⚠️ Pendências
 
@@ -91,6 +91,7 @@ make dev
   - Exceções da API disparam um modal de erro com feedback amigável.
   - Usuários `admin` ganham o botão **Novo documento**, que abre um modal com formulário para cadastrar runbooks/políticas via `POST /docs`.
   - Sucessos de criação apresentam um modal de confirmação e atualizam automaticamente a grade de resultados.
+  - Um painel de reindexação mostra jobs recentes, progresso (pendentes/em andamento/concluídos/falhos) e permite disparar novas execuções e inspecionar itens.
 3. **Detalhes** — Ao abrir um item, a rota `/docs/{id}` traz o conteúdo completo com contexto visual moderno (chips de tags, versão, data relativa e _skeleton loader_ durante o carregamento).
 
 ### Validando a API ponta a ponta
@@ -140,7 +141,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Modelos SQLAlchemy + migrations iniciais | Dados base (usuários, organizações, documentos, memberships) prontos. |
 | ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento, reindex, idempotência e rate-limit entregues. |
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
-| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais entregues; dashboards analíticos e testes E2E pendentes. |
+| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
 | 🚧 | Terraform com recursos reais | Módulos criados, mas ainda com placeholders (VPC, ALB, Secrets, autoscaling, DLQ). |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existente, mas depende de variáveis/infra reais e etapas de approval. |
@@ -149,7 +150,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 
 ## Backlog priorizado para Product Ready
 
-1. **Completar o pipeline de documentos**: expor progresso/erros de reindex na UI, adicionar paginação/scroll em replays OpenSearch e acionar alertas automáticos.
+1. **Completar o pipeline de documentos**: automatizar alertas e dashboards para reindex, enriquecer replays OpenSearch e expor métricas chave na UI/observabilidade.
 2. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
 3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
 4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.

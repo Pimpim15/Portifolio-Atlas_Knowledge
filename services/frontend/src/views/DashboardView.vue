@@ -57,6 +57,8 @@
       </p>
     </section>
 
+    <ReindexPanel v-if="canManageDocs" />
+
     <Modal :show="resultsModalOpen" @close="resultsModalOpen = false">
       <template #title>
         {{ selectedDoc?.title || 'Resultados da busca' }}
@@ -140,6 +142,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import Modal from '../components/Modal.vue';
+import ReindexPanel from '../components/ReindexPanel.vue';
 import api from '../utils/api';
 import { useAuthStore } from '../store/auth';
 
