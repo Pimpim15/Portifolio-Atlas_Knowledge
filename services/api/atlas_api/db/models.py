@@ -95,3 +95,54 @@ class DocumentVersion(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="versions")
+
+
+class ReindexJobStatus(str, RoleType):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class ReindexJob(Base):
+    __tablename__ = "reindex_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    status: Mapped[ReindexJobStatus] = mapped_column(SQLEnum(ReindexJobStatus, name="reindex_job_status"), default=ReindexJobStatus.PENDING)
+    total_documents: Mapped[int | None] = mapped_column(nullable=True)
+    processed_documents: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    organization: Mapped[Organization] = relationship(back_populates="reindex_jobs")
+
+
+class ReindexJobItem(Base):
+    __tablename__ = "reindex_job_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reindex_jobs.id", ondelete="CASCADE"))
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    version: Mapped[int]
+    status: Mapped[ReindexJobStatus] = mapped_column(SQLEnum(ReindexJobStatus, name="reindex_item_status"), default=ReindexJobStatus.PENDING)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    job: Mapped[ReindexJob] = relationship(back_populates="items")
+
+
+Organization.reindex_jobs = relationship(  # type: ignore[attr-defined]
+    "ReindexJob",
+    back_populates="organization",
+    cascade="all, delete-orphan",
+)
+
+ReindexJob.items = relationship(  # type: ignore[attr-defined]
+    "ReindexJobItem",
+    back_populates="job",
+    cascade="all, delete-orphan",
+    order_by="ReindexJobItem.created_at",
+)

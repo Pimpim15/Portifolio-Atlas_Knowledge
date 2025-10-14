@@ -8,6 +8,7 @@ from typing import Any
 from ..config import get_settings
 from ..db.models import Document
 from ..observability.logging import get_logger
+from ..observability.metrics import REINDEX_DOCUMENT_ENQUEUED
 from ..search.serializers import serialize_document
 from .sqs import ensure_queue_exists, get_sqs_client
 
@@ -37,6 +38,17 @@ def enqueue_index(document: Document) -> None:
         "document": serialize_document(document),
     }
     _send_message(payload)
+
+
+def enqueue_reindex_document(job_id: str, document: Document) -> None:
+    payload = {
+        "source": DOCUMENT_EVENT_SOURCE,
+        "action": "index",
+        "job_id": job_id,
+        "document": serialize_document(document),
+    }
+    _send_message(payload)
+    REINDEX_DOCUMENT_ENQUEUED.inc()
 
 
 def enqueue_delete(document_id: str, org_id: str) -> None:

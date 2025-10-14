@@ -9,9 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..db.models import Document, DocumentVersion
+from ..db.models import Document, DocumentVersion, ReindexJob, ReindexJobItem, ReindexJobStatus
 from ..deps import CurrentUser, RBACGuard, get_db, get_redis
-from ..queue.publisher import enqueue_delete, enqueue_index
+from ..observability.metrics import REINDEX_JOB_COUNT
+from ..queue.publisher import enqueue_delete, enqueue_index, enqueue_reindex_document
 from ..security.idempotency import build_idempotency_context
 from ..security.ratelimit import init_rate_limiter
 
@@ -136,6 +137,87 @@ async def update_document(
     return document_out
 
 
+class ReindexJobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    status: ReindexJobStatus
+    total_documents: int | None
+    processed_documents: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@router.post("/reindex", response_model=ReindexJobOut, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit(settings.rate_limit_mutation)
+async def trigger_reindex(
+    request: Request,
+    current_user: CurrentUser = Depends(RBACGuard(["admin"])),
+    session: AsyncSession = Depends(get_db),
+) -> ReindexJobOut:
+    org_id = current_user.organization_ids[0]
+    stmt = select(Document).where(
+        Document.org_id == org_id,
+        Document.deleted_at.is_(None),
+    )
+    docs_result = await session.execute(stmt)
+    documents = docs_result.scalars().all()
+    total = len(documents)
+
+    job_status = ReindexJobStatus.RUNNING if total else ReindexJobStatus.SUCCESS
+    job = ReindexJob(
+        org_id=org_id,
+        status=job_status,
+        total_documents=total,
+        processed_documents=0,
+    )
+    session.add(job)
+    await session.flush()
+
+    for doc in documents:
+        session.add(
+            ReindexJobItem(
+                job_id=job.id,
+                document_id=doc.id,
+                version=doc.version,
+                status=ReindexJobStatus.SUCCESS,
+            )
+        )
+
+    if total:
+        job.processed_documents = total
+        job.status = ReindexJobStatus.SUCCESS
+
+    await session.commit()
+
+    for doc in documents:
+        enqueue_reindex_document(str(job.id), doc)
+
+    REINDEX_JOB_COUNT.labels(status=job.status.value).inc()
+    return ReindexJobOut.model_validate(job)
+
+
+@router.get("/reindex", response_model=list[ReindexJobOut])
+@limiter.limit(settings.rate_limit_default)
+async def list_reindex_jobs(
+    request: Request,
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    current_user: CurrentUser = Depends(RBACGuard(["admin"])),
+    session: AsyncSession = Depends(get_db),
+) -> list[ReindexJobOut]:
+    stmt = (
+        select(ReindexJob)
+        .where(ReindexJob.org_id.in_(current_user.organization_ids))
+        .order_by(ReindexJob.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    jobs = result.scalars().all()
+    return [ReindexJobOut.model_validate(job) for job in jobs]
+
+
 @router.get("/{doc_id}", response_model=DocumentOut)
 @limiter.limit(settings.rate_limit_default)
 async def get_document(
@@ -227,3 +309,5 @@ async def list_document_versions(
     result = await session.execute(stmt)
     versions = result.scalars().all()
     return [DocumentVersionOut.model_validate(version) for version in versions]
+
+

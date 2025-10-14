@@ -15,6 +15,7 @@ from services.api.atlas_api.observability.logging import (
     get_logger,
     unbind_context,
 )
+from services.api.atlas_api.observability.metrics import WORKER_ACTION_COUNT
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client
 from services.api.atlas_api.search.mappings import DOC_INDEX
 from services.api.atlas_api.search.os_client import (
@@ -46,6 +47,7 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
             )
             return
         index_document(client, DOC_INDEX, document_id, document)
+        WORKER_ACTION_COUNT.labels(action="index").inc()
     elif action == "delete":
         document_id = body.get("document_id")
         if not document_id:
@@ -55,11 +57,13 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
             )
             return
         delete_document(client, DOC_INDEX, document_id)
+        WORKER_ACTION_COUNT.labels(action="delete").inc()
     else:
         logger.warning(
             "worker_unknown_action",
             action=action,
         )
+        WORKER_ACTION_COUNT.labels(action=str(action or "unknown")).inc()
 
 
 def _poll_loop() -> None:

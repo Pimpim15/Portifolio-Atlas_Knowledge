@@ -44,7 +44,7 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     user = CurrentUser(
         id=uuid.uuid4(),
         email="editor@example.com",
-        roles=["editor"],
+        roles=["admin", "editor"],
         organization_ids=[org_id],
     )
 
@@ -127,5 +127,18 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     assert versions_list[1]["version"] == 1
     assert versions_list[0]["title"] == update_payload["title"]
     assert versions_list[1]["title"] == payload["title"]
+
+    pre_reindex_events = len(events)
+    reindex_response = client.post("/docs/reindex", headers=headers)
+    assert reindex_response.status_code == 202
+    job_payload = reindex_response.json()
+    assert job_payload["processed_documents"] == job_payload["total_documents"]
+    assert job_payload["status"] == "success"
+    assert len(events) == pre_reindex_events + job_payload["total_documents"]
+
+    reindex_list = client.get("/docs/reindex?limit=10&offset=0", headers=headers)
+    assert reindex_list.status_code == 200, reindex_list.json()
+    listed_jobs = reindex_list.json()
+    assert any(job["id"] == job_payload["id"] for job in listed_jobs)
 
     overrides.pop(get_current_user, None)
