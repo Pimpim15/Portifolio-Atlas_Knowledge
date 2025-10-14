@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from typing import Any
 
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import]
 
 from services.api.atlas_api.config import get_settings
 from services.api.atlas_api.observability.logging import (
@@ -15,7 +16,12 @@ from services.api.atlas_api.observability.logging import (
     get_logger,
     unbind_context,
 )
-from services.api.atlas_api.observability.metrics import WORKER_ACTION_COUNT
+from services.api.atlas_api.observability.metrics import (
+    WORKER_ACTION_COUNT,
+    WORKER_PROCESSING_ERRORS,
+    WORKER_PROCESSING_LATENCY,
+)
+from services.api.atlas_api.observability.tracing import setup_tracing
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client
 from services.api.atlas_api.search.mappings import DOC_INDEX
 from services.api.atlas_api.search.os_client import (
@@ -25,45 +31,79 @@ from services.api.atlas_api.search.os_client import (
     index_document,
 )
 
+try:  # pragma: no cover - optional dependency
+    from opentelemetry import trace  # type: ignore[import]
+except ImportError:  # pragma: no cover - optional dependency
+    trace = None
+
 logger = get_logger(component="worker")
+TRACER = trace.get_tracer("atlas-worker") if trace else None
 
 
 def _process_message(body: dict[str, Any], client: Any) -> None:
-
     action = body.get("action")
-    if action == "index":
-        document = body.get("document")
-        if not isinstance(document, dict):
-            logger.warning(
-                "worker_invalid_document_payload",
-                payload=body,
-            )
-            return
+    action_label = str(action or "unknown")
+    document = body.get("document") if isinstance(body.get("document"), dict) else None
+    document_id = None
+    if document:
         document_id = document.get("id")
-        if not document_id:
-            logger.warning(
-                "worker_missing_document_id",
-                payload=document,
-            )
-            return
-        index_document(client, DOC_INDEX, document_id, document)
-        WORKER_ACTION_COUNT.labels(action="index").inc()
-    elif action == "delete":
-        document_id = body.get("document_id")
-        if not document_id:
-            logger.warning(
-                "worker_missing_document_id_delete",
-                payload=body,
-            )
-            return
-        delete_document(client, DOC_INDEX, document_id)
-        WORKER_ACTION_COUNT.labels(action="delete").inc()
-    else:
-        logger.warning(
-            "worker_unknown_action",
-            action=action,
+    elif body.get("document_id"):
+        document_id = body["document_id"]
+
+    span_cm = (
+        TRACER.start_as_current_span(
+            "worker.process_message",
+            attributes={
+                "atlas.worker.action": action_label,
+                "atlas.worker.job_id": body.get("job_id"),
+                "atlas.worker.job_item_id": body.get("job_item_id"),
+                "atlas.worker.document_id": document_id,
+            },
         )
-        WORKER_ACTION_COUNT.labels(action=str(action or "unknown")).inc()
+        if TRACER
+        else contextlib.nullcontext()
+    )
+
+    start = time.perf_counter()
+    success = False
+
+    with span_cm:
+        if action == "index":
+            if document is None:
+                logger.warning(
+                    "worker_invalid_document_payload",
+                    payload=body,
+                )
+            elif not document_id:
+                logger.warning(
+                    "worker_missing_document_id",
+                    payload=document,
+                )
+            else:
+                index_document(client, DOC_INDEX, document_id, document)
+                WORKER_ACTION_COUNT.labels(action="index").inc()
+                success = True
+        elif action == "delete":
+            if not document_id:
+                logger.warning(
+                    "worker_missing_document_id_delete",
+                    payload=body,
+                )
+            else:
+                delete_document(client, DOC_INDEX, str(document_id))
+                WORKER_ACTION_COUNT.labels(action="delete").inc()
+                success = True
+        else:
+            logger.warning(
+                "worker_unknown_action",
+                action=action,
+            )
+            WORKER_ACTION_COUNT.labels(action=action_label).inc()
+
+    elapsed = time.perf_counter() - start
+    WORKER_PROCESSING_LATENCY.labels(action_label).observe(elapsed)
+    if not success:
+        WORKER_PROCESSING_ERRORS.labels(action_label).inc()
 
 
 def _poll_loop() -> None:
@@ -143,6 +183,7 @@ def _poll_loop() -> None:
 
 def main() -> None:
     configure_logging()
+    setup_tracing("atlas-worker")
     logger.info("worker_started")
     while True:
         _poll_loop()

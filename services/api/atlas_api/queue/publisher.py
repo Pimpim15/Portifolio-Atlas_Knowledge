@@ -40,13 +40,15 @@ def enqueue_index(document: Document) -> None:
     _send_message(payload)
 
 
-def enqueue_reindex_document(job_id: str, document: Document) -> None:
+def enqueue_reindex_document(job_id: str, document: Document, job_item_id: str | None = None) -> None:
     payload = {
         "source": DOCUMENT_EVENT_SOURCE,
         "action": "index",
         "job_id": job_id,
         "document": serialize_document(document),
     }
+    if job_item_id is not None:
+        payload["job_item_id"] = job_item_id
     _send_message(payload)
     REINDEX_DOCUMENT_ENQUEUED.inc()
 

@@ -24,13 +24,13 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
 - Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
-- Endpoint `POST /docs/reindex` com job tracking e métricas Prometheus para reindexação em lote.
+- Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 
 ### ⚠️ Pendências
 
 - Terraform com recursos reais (VPC com IGW/NAT, ALB HTTPS, Secrets Manager, autoscaling, DLQ SQS, sidecar ADOT).
 - Pipeline de deploy GitHub Actions com _plan/apply_ por ambiente, imagens versionadas e aprovações.
-- Dashboards/alertas CloudWatch, span/metrics do worker e publicação de screenshots/logs no README.
+- Dashboards/alertas CloudWatch, enriquecimento de traces cross-service e publicação de screenshots/logs no README.
 - Cenários de carga (Locust/wrk) e documentação dos resultados.
 
 ## Arquitetura
@@ -139,7 +139,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | --- | --- | --- |
 | ✅ | Modelos SQLAlchemy + migrations iniciais | Dados base (usuários, organizações, documentos, memberships) prontos. |
 | ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento, reindex, idempotência e rate-limit entregues. |
-| ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando; reindexação completa ainda ausente. |
+| ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
 | 🚧 | Terraform com recursos reais | Módulos criados, mas ainda com placeholders (VPC, ALB, Secrets, autoscaling, DLQ). |
@@ -149,7 +149,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 
 ## Backlog priorizado para Product Ready
 
-1. **Completar o pipeline de documentos**: instrumentação profunda (traces + métricas custom) para API/worker e replays paginados no OpenSearch.
+1. **Completar o pipeline de documentos**: atualizar progresso dos jobs direto do worker, expor estados parciais/erros e enriquecer alertas automáticos.
 2. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
 3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
 4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.

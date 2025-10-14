@@ -1,24 +1,52 @@
 """CRUD de documentos."""
 
+import base64
+import binascii
 import uuid
+from contextlib import nullcontext
 from datetime import datetime
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..db.models import Document, DocumentVersion, ReindexJob, ReindexJobItem, ReindexJobStatus
 from ..deps import CurrentUser, RBACGuard, get_db, get_redis
-from ..observability.metrics import REINDEX_JOB_COUNT
+from ..observability.logging import get_logger
+from ..observability.metrics import REINDEX_JOB_COUNT, REINDEX_JOB_LATENCY
 from ..queue.publisher import enqueue_delete, enqueue_index, enqueue_reindex_document
 from ..security.idempotency import build_idempotency_context
 from ..security.ratelimit import init_rate_limiter
 
+try:  # pragma: no cover - optional dependency
+    from opentelemetry import trace  # type: ignore[import]
+except ImportError:  # pragma: no cover - optional dependency
+    trace = None
+
 router = APIRouter()
 settings = get_settings()
 limiter = init_rate_limiter()
+logger = get_logger(component="api", module="docs")
+tracer = trace.get_tracer("atlas-api.docs") if trace else None
+
+
+def _encode_cursor(item: ReindexJobItem) -> str:
+    raw = f"{item.created_at.isoformat()}|{item.id}"
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("utf-8")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    padding = "=" * (-len(cursor) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(f"{cursor}{padding}").decode("utf-8")
+        created_at_raw, item_id_raw = decoded.split("|", 1)
+        created_at = datetime.fromisoformat(created_at_raw)
+        return created_at, uuid.UUID(item_id_raw)
+    except (ValueError, binascii.Error):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
 
 
 class DocumentBase(BaseModel):
@@ -148,6 +176,24 @@ class ReindexJobOut(BaseModel):
     updated_at: datetime
 
 
+class ReindexJobItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    job_id: uuid.UUID
+    document_id: uuid.UUID
+    version: int
+    status: ReindexJobStatus
+    created_at: datetime
+    updated_at: datetime
+    error_message: str | None
+
+
+class ReindexJobItemsPage(BaseModel):
+    items: list[ReindexJobItemOut]
+    next_cursor: str | None
+
+
 @router.post("/reindex", response_model=ReindexJobOut, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit(settings.rate_limit_mutation)
 async def trigger_reindex(
@@ -156,45 +202,94 @@ async def trigger_reindex(
     session: AsyncSession = Depends(get_db),
 ) -> ReindexJobOut:
     org_id = current_user.organization_ids[0]
-    stmt = select(Document).where(
-        Document.org_id == org_id,
-        Document.deleted_at.is_(None),
+    tracer_cm = (
+        tracer.start_as_current_span(
+            "docs.trigger_reindex",
+            attributes={
+                "atlas.reindex.org_id": str(org_id),
+            },
+        )
+        if tracer
+        else nullcontext()
     )
-    docs_result = await session.execute(stmt)
-    documents = docs_result.scalars().all()
-    total = len(documents)
 
-    job_status = ReindexJobStatus.RUNNING if total else ReindexJobStatus.SUCCESS
-    job = ReindexJob(
-        org_id=org_id,
-        status=job_status,
-        total_documents=total,
-        processed_documents=0,
-    )
-    session.add(job)
-    await session.flush()
+    job_status_value = ReindexJobStatus.PENDING.value
+    response_payload: ReindexJobOut | None = None
+    total = 0
+    start = time.perf_counter()
 
-    for doc in documents:
-        session.add(
-            ReindexJobItem(
+    with tracer_cm as span:
+        stmt = select(Document).where(
+            Document.org_id == org_id,
+            Document.deleted_at.is_(None),
+        )
+        docs_result = await session.execute(stmt)
+        documents = list(docs_result.scalars())
+        total = len(documents)
+
+        job_status = ReindexJobStatus.RUNNING if total else ReindexJobStatus.SUCCESS
+        job = ReindexJob(
+            org_id=org_id,
+            status=job_status,
+            total_documents=total,
+            processed_documents=0,
+        )
+        session.add(job)
+        await session.flush()
+
+        job_items: list[ReindexJobItem] = []
+        for doc in documents:
+            item = ReindexJobItem(
                 job_id=job.id,
                 document_id=doc.id,
                 version=doc.version,
                 status=ReindexJobStatus.SUCCESS,
             )
+            session.add(item)
+            job_items.append(item)
+
+        if total:
+            job.processed_documents = total
+            job.status = ReindexJobStatus.SUCCESS
+
+        await session.flush()
+        await session.commit()
+        await session.refresh(job)
+
+        job_status_value = job.status.value
+
+        for doc, item in zip(documents, job_items):
+            enqueue_reindex_document(str(job.id), doc, str(item.id))
+
+        logger.info(
+            "reindex_job_enqueued",
+            job_id=str(job.id),
+            org_id=str(org_id),
+            total_documents=total,
+            status=job.status.value,
         )
 
-    if total:
-        job.processed_documents = total
-        job.status = ReindexJobStatus.SUCCESS
+        if span is not None:
+            span.set_attribute("atlas.reindex.job_id", str(job.id))
+            span.set_attribute("atlas.reindex.total_documents", total)
+            span.set_attribute("atlas.reindex.job_status", job.status.value)
+            span.add_event(
+                "reindex_enqueued",
+                {
+                    "atlas.reindex.document_count": total,
+                },
+            )
 
-    await session.commit()
+        response_payload = ReindexJobOut.model_validate(job)
 
-    for doc in documents:
-        enqueue_reindex_document(str(job.id), doc)
+    duration = time.perf_counter() - start
+    REINDEX_JOB_COUNT.labels(status=job_status_value).inc()
+    REINDEX_JOB_LATENCY.labels(status=job_status_value).observe(duration)
 
-    REINDEX_JOB_COUNT.labels(status=job.status.value).inc()
-    return ReindexJobOut.model_validate(job)
+    if response_payload is None:  # pragma: no cover - defensive
+        raise RuntimeError("Failed to create reindex job")
+
+    return response_payload
 
 
 @router.get("/reindex", response_model=list[ReindexJobOut])
@@ -216,6 +311,86 @@ async def list_reindex_jobs(
     result = await session.execute(stmt)
     jobs = result.scalars().all()
     return [ReindexJobOut.model_validate(job) for job in jobs]
+
+
+@router.get("/reindex/{job_id}/items", response_model=ReindexJobItemsPage)
+@limiter.limit(settings.rate_limit_default)
+async def list_reindex_job_items(
+    job_id: uuid.UUID,
+    request: Request,
+    limit: int = Query(25, ge=1, le=100),
+    cursor: str | None = Query(None),
+    current_user: CurrentUser = Depends(RBACGuard(["admin"])),
+    session: AsyncSession = Depends(get_db),
+) -> ReindexJobItemsPage:
+    tracer_cm = (
+        tracer.start_as_current_span(
+            "docs.list_reindex_job_items",
+            attributes={
+                "atlas.reindex.job_id": str(job_id),
+                "atlas.reindex.limit": limit,
+            },
+        )
+        if tracer
+        else nullcontext()
+    )
+
+    with tracer_cm as span:
+        job_stmt = select(ReindexJob).where(
+            ReindexJob.id == job_id,
+            ReindexJob.org_id.in_(current_user.organization_ids),
+        )
+        job_result = await session.execute(job_stmt)
+        job = job_result.scalar_one_or_none()
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reindex job not found")
+
+        cursor_filter = None
+        if cursor:
+            created_at_cursor, item_id_cursor = _decode_cursor(cursor)
+            cursor_filter = or_(
+                ReindexJobItem.created_at < created_at_cursor,
+                and_(
+                    ReindexJobItem.created_at == created_at_cursor,
+                    ReindexJobItem.id < item_id_cursor,
+                ),
+            )
+
+        stmt = (
+            select(ReindexJobItem)
+            .where(ReindexJobItem.job_id == job_id)
+            .order_by(ReindexJobItem.created_at.desc(), ReindexJobItem.id.desc())
+            .limit(limit + 1)
+        )
+        if cursor_filter is not None:
+            stmt = stmt.where(cursor_filter)
+
+        result = await session.execute(stmt)
+        items = list(result.scalars())
+        has_more = len(items) > limit
+        page_items = items[:limit]
+
+        next_cursor = None
+        if page_items and has_more:
+            next_cursor = _encode_cursor(page_items[-1])
+
+        payload = ReindexJobItemsPage(
+            items=[ReindexJobItemOut.model_validate(item) for item in page_items],
+            next_cursor=next_cursor,
+        )
+
+        logger.debug(
+            "reindex_job_items_listed",
+            job_id=str(job_id),
+            returned=len(payload.items),
+            has_more=has_more,
+        )
+
+        if span is not None:
+            span.set_attribute("atlas.reindex.items_returned", len(payload.items))
+            span.set_attribute("atlas.reindex.has_more", has_more)
+
+        return payload
 
 
 @router.get("/{doc_id}", response_model=DocumentOut)

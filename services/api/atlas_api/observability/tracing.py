@@ -11,13 +11,13 @@ from ..config import get_settings
 _tracer_configured = False
 
 
-def setup_tracing() -> None:
+def setup_tracing(service_name: str = "atlas-api") -> None:
     global _tracer_configured
     if _tracer_configured:
         return
 
     settings = get_settings()
-    resource = Resource.create({"service.name": "atlas-api"})
+    resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource)
 
     endpoint: str | None = (

@@ -136,9 +136,36 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     assert job_payload["status"] == "success"
     assert len(events) == pre_reindex_events + job_payload["total_documents"]
 
+    reindex_events = events[pre_reindex_events:]
+    job_item_ids = {event.get("job_item_id") for event in reindex_events}
+    assert all(event.get("job_id") == job_payload["id"] for event in reindex_events)
+    assert None not in job_item_ids
+    assert len(job_item_ids) == len(reindex_events)
+
     reindex_list = client.get("/docs/reindex?limit=10&offset=0", headers=headers)
     assert reindex_list.status_code == 200, reindex_list.json()
     listed_jobs = reindex_list.json()
     assert any(job["id"] == job_payload["id"] for job in listed_jobs)
+
+    items_page = client.get(
+        f"/docs/reindex/{job_payload['id']}/items?limit=1",
+        headers=headers,
+    )
+    assert items_page.status_code == 200, items_page.json()
+    page_payload = items_page.json()
+    assert page_payload["items"], "should return at least one job item"
+    first_item = page_payload["items"][0]
+    assert first_item["job_id"] == job_payload["id"]
+    assert first_item["status"] == "success"
+
+    if page_payload.get("next_cursor"):
+        next_page = client.get(
+            f"/docs/reindex/{job_payload['id']}/items?limit=10&cursor={page_payload['next_cursor']}",
+            headers=headers,
+        )
+        assert next_page.status_code == 200, next_page.json()
+        next_payload = next_page.json()
+        assert next_payload["items"], "cursor pagination should return remaining items"
+        assert all(item["id"] != first_item["id"] for item in next_payload["items"])
 
     overrides.pop(get_current_user, None)
