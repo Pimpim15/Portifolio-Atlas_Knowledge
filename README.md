@@ -62,6 +62,22 @@ make dev
    - Frontend: http://localhost:5173
    - OpenSearch Dashboards: http://localhost:5601
 
+### Fluxo atual no frontend
+
+O login usa as credenciais fixas `admin@acme.com` / `admin`. Após autenticar, você verá a tela de busca. Os componentes principais ainda são _stubs_:
+
+- O campo de busca dispara `GET /search?q=<termo>`, mas o _guard_ de RBAC ainda não está conectado ao JWT decodificado. Por isso, a API responde `403 Insufficient role` e o frontend permanece sem resultados.
+- As rotas de documentos (`POST /docs`, `GET /docs/{id}`) guardam o conteúdo em memória apenas durante o ciclo de vida do processo e também dependem do mesmo RBAC, então retornam `403` no estado atual.
+
+Para inspecionar o que está acontecendo abra o DevTools → aba **Network** e tente uma busca; você verá a resposta `403` da rota `/search`. Para validar as chamadas diretamente, utilize o Swagger em http://localhost:8000/docs ou scripts como:
+
+```powershell
+$token = (Invoke-RestMethod -Method Post -Uri http://localhost:8000/auth/login -Body (@{ email = 'admin@acme.com'; password = 'admin' } | ConvertTo-Json) -ContentType 'application/json').access
+Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/search?q=runbook' -Headers @{ Authorization = "Bearer $token" }
+```
+
+O próximo passo de evolução é ligar o `RBACGuard` à decodificação do JWT (claims `roles`) e implementar a busca real contra o OpenSearch ou, provisoriamente, contra a coleção em memória de documentos.
+
 ## Pipelines
 
 - `pr.yml`: lint (ruff), type-check (mypy), testes (pytest + coverage ≥ 85%), CodeQL, Trivy.
