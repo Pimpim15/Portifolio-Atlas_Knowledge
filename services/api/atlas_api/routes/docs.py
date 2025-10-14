@@ -3,13 +3,14 @@
 import base64
 import binascii
 import uuid
+from collections.abc import Sequence
 from contextlib import nullcontext
 from datetime import datetime
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
@@ -174,6 +175,68 @@ class ReindexJobOut(BaseModel):
     processed_documents: int
     created_at: datetime
     updated_at: datetime
+    pending_items: int
+    running_items: int
+    success_items: int
+    failed_items: int
+    error_message: str | None
+
+
+def _default_counts() -> dict[ReindexJobStatus, int]:
+    return {
+        ReindexJobStatus.PENDING: 0,
+        ReindexJobStatus.RUNNING: 0,
+        ReindexJobStatus.SUCCESS: 0,
+        ReindexJobStatus.FAILED: 0,
+    }
+
+
+async def _collect_job_item_counts(
+    session: AsyncSession,
+    job_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, dict[ReindexJobStatus, int]]:
+    if not job_ids:
+        return {}
+
+    stmt = (
+        select(ReindexJobItem.job_id, ReindexJobItem.status, func.count())
+        .where(ReindexJobItem.job_id.in_(job_ids))
+        .group_by(ReindexJobItem.job_id, ReindexJobItem.status)
+    )
+    result = await session.execute(stmt)
+
+    counts_map: dict[uuid.UUID, dict[ReindexJobStatus, int]] = {
+        job_id: _default_counts().copy() for job_id in job_ids
+    }
+
+    for job_id, status, count in result.all():
+        job_counts = counts_map.setdefault(job_id, _default_counts().copy())
+        job_counts[status] = int(count)
+
+    return counts_map
+
+
+def _serialize_job(
+    job: ReindexJob,
+    counts_map: dict[uuid.UUID, dict[ReindexJobStatus, int]] | None = None,
+) -> ReindexJobOut:
+    counts = counts_map.get(job.id) if counts_map else None
+    if counts is None:
+        counts = _default_counts()
+
+    return ReindexJobOut(
+        id=job.id,
+        status=job.status,
+        total_documents=job.total_documents,
+        processed_documents=job.processed_documents,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        pending_items=counts.get(ReindexJobStatus.PENDING, 0),
+        running_items=counts.get(ReindexJobStatus.RUNNING, 0),
+        success_items=counts.get(ReindexJobStatus.SUCCESS, 0),
+        failed_items=counts.get(ReindexJobStatus.FAILED, 0),
+        error_message=job.error_message,
+    )
 
 
 class ReindexJobItemOut(BaseModel):
@@ -280,7 +343,8 @@ async def trigger_reindex(
                 },
             )
 
-        response_payload = ReindexJobOut.model_validate(job)
+        counts_map = await _collect_job_item_counts(session, [job.id])
+        response_payload = _serialize_job(job, counts_map)
 
     duration = time.perf_counter() - start
     if total:
@@ -313,7 +377,9 @@ async def list_reindex_jobs(
     )
     result = await session.execute(stmt)
     jobs = result.scalars().all()
-    return [ReindexJobOut.model_validate(job) for job in jobs]
+
+    counts_map = await _collect_job_item_counts(session, [job.id for job in jobs])
+    return [_serialize_job(job, counts_map) for job in jobs]
 
 
 @router.get("/reindex/{job_id}/items", response_model=ReindexJobItemsPage)

@@ -71,7 +71,7 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
 
     response = client.post("/docs", json=payload, headers=headers)
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     assert events, "message should be enqueued"
 
     message = events[0]
@@ -135,8 +135,14 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     if job_payload["total_documents"]:
         assert job_payload["processed_documents"] == 0
         assert job_payload["status"] == "running"
+        assert job_payload["pending_items"] == job_payload["total_documents"]
+        assert job_payload["running_items"] == 0
+        assert job_payload["success_items"] == 0
+        assert job_payload["failed_items"] == 0
     else:  # pragma: no cover - defensive for empty datasets
         assert job_payload["status"] == "success"
+        assert job_payload["pending_items"] == 0
+        assert job_payload["running_items"] == 0
     assert len(events) == pre_reindex_events + job_payload["total_documents"]
 
     reindex_events = events[pre_reindex_events:]
@@ -156,6 +162,9 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     matched_job = matched_jobs[0]
     assert matched_job["processed_documents"] == matched_job["total_documents"]
     assert matched_job["status"] == "success"
+    assert matched_job["success_items"] == matched_job["total_documents"]
+    assert matched_job["pending_items"] == 0
+    assert matched_job["failed_items"] == 0
 
     items_page = client.get(
         f"/docs/reindex/{job_payload['id']}/items?limit=1",
