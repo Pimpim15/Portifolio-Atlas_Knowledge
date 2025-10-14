@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +13,11 @@ from ..db.models import User
 from ..deps import get_db
 from ..security.jwt import create_access_token, create_refresh_token
 from ..security.passwords import verify_password
+from ..security.ratelimit import init_rate_limiter
 
 router = APIRouter()
+settings = get_settings()
+limiter = init_rate_limiter()
 
 
 class LoginRequest(BaseModel):
@@ -29,8 +32,12 @@ class TokenPair(BaseModel):
 
 
 @router.post("/login", response_model=TokenPair)
-async def login(payload: LoginRequest, session: AsyncSession = Depends(get_db)) -> TokenPair:
-    settings = get_settings()
+@limiter.limit(settings.rate_limit_auth)
+async def login(
+    request: Request,
+    payload: LoginRequest,
+    session: AsyncSession = Depends(get_db),
+) -> TokenPair:
 
     result = await session.execute(
         select(User).options(joinedload(User.memberships)).where(User.email == payload.email)

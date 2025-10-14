@@ -77,6 +77,7 @@ class Settings(BaseSettings):
 
     rate_limit_default: str = Field("60/minute", alias="RATE_LIMIT_DEFAULT")
     rate_limit_auth: str = Field("10/minute", alias="RATE_LIMIT_AUTH")
+    rate_limit_mutation: str = Field("30/minute", alias="RATE_LIMIT_MUTATION")
 
     opentelemetry_endpoint: str | None = Field(None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
 

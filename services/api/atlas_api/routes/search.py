@@ -4,20 +4,24 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from opensearchpy import OpenSearchException
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import get_settings
 from ..db.models import Document
 from ..deps import CurrentUser, RBACGuard, get_db
+from ..observability.logging import get_logger
 from ..search.mappings import DOC_INDEX
 from ..search.os_client import ensure_index_exists, get_client
-from ..observability.logging import get_logger
+from ..security.ratelimit import init_rate_limiter
 
 router = APIRouter()
 logger = get_logger(component="api", module="search")
+settings = get_settings()
+limiter = init_rate_limiter()
 
 
 class SearchResponseItem(BaseModel):
@@ -172,7 +176,9 @@ def _search_opensearch(q: str, filter_tags: list[str], current_user: CurrentUser
 
 @router.get("", response_model=SearchResponse)
 @router.get("/", response_model=SearchResponse, include_in_schema=False)
+@limiter.limit(settings.rate_limit_default)
 async def search(
+    request: Request,
     q: str = Query("", description="Termo de busca"),
     tags: str | None = Query(None, description="Lista de tags separadas por vírgula"),
     current_user: CurrentUser = Depends(RBACGuard(["viewer", "editor", "admin"])),

@@ -4,13 +4,33 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 
 ## Visão geral
 
-- **API**: FastAPI + SQLAlchemy + Alembic, autenticação JWT RS256, RBAC, idempotência e rate-limit.
+- **API**: FastAPI + SQLAlchemy + Alembic, autenticação JWT RS256, RBAC; idempotência e rate-limit em implementação.
 - **Worker**: Poller em Python consumindo SQS diretamente (boto3) para indexação no OpenSearch.
 - **Frontend**: Vue 3 + Pinia + Vite consumindo a API.
 - **Busca**: OpenSearch com analyzers PT/EN, sinônimos e filtros por tags, com _fallback_ automático para PostgreSQL.
 - **Infraestrutura**: Terraform para VPC, ECS Fargate, RDS, OpenSearch, SQS, Secrets Manager, IAM OIDC.
 - **Observabilidade**: OpenTelemetry → ADOT → AWS X-Ray, CloudWatch Logs, métricas e alarmes.
 - **Qualidade**: pytest (unit, integração, e2e), cobertura ≥ 85%, lint (ruff), mypy, pre-commit, Trivy e CodeQL.
+
+## Status do projeto
+
+### ✅ Entregue
+
+- API FastAPI com autenticação JWT RS256, RBAC por organização e rotas principais (`/auth`, `/users`, `/docs`, `/search`) com _fallback_ para PostgreSQL.
+- Pipeline assíncrono com SQS + worker Python para indexar e remover documentos no OpenSearch.
+- Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
+- Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
+- Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
+- Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
+
+### ⚠️ Pendências
+
+- Idempotência real nas mutações (`Idempotency-Key`), limitação de requisições por rota e cabeçalhos de segurança.
+- Versionamento de documentos, endpoint `/reindex` e _replays_ completos para OpenSearch.
+- Terraform com recursos reais (VPC com IGW/NAT, ALB HTTPS, Secrets Manager, autoscaling, DLQ SQS, sidecar ADOT).
+- Pipeline de deploy GitHub Actions com _plan/apply_ por ambiente, imagens versionadas e aprovações.
+- Dashboards/alertas CloudWatch, span/metrics do worker e publicação de screenshots/logs no README.
+- Cenários de carga (Locust/wrk) e documentação dos resultados.
 
 ## Arquitetura
 
@@ -112,16 +132,28 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 - SAST/DAST (CodeQL, Trivy), Dependabot, gitleaks.
 - Backups RDS, testes de restauração, logs sem PII sensível.
 
-## Roadmap inicial
+## Roadmap atualizado
 
-- [x] Implementar modelos SQLAlchemy e migrations iniciais.
-- [x] Construir roteadores (auth, users, docs, search) com RBAC.
-- [x] Configurar pipeline SQS → OpenSearch com worker dedicado.
-- [ ] Implementar UI Vue (login, CRUD docs, busca, dashboards).
-- [ ] Completar módulos Terraform com recursos reais.
-- [ ] Automatizar deploy dev (GitHub Actions + Terraform).
-- [ ] Criar cenários Locust/wrk e capturar métricas.
-- [ ] Publicar screenshots/logs/dashboards no README.
+| Status | Entrega | Observações |
+| --- | --- | --- |
+| ✅ | Modelos SQLAlchemy + migrations iniciais | Dados base (usuários, organizações, documentos, memberships) prontos. |
+| ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Falta versionamento simples e idempotência. |
+| ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando; reindexação completa ainda ausente. |
+| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais entregues; dashboards analíticos e testes E2E pendentes. |
+| 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
+| 🚧 | Terraform com recursos reais | Módulos criados, mas ainda com placeholders (VPC, ALB, Secrets, autoscaling, DLQ). |
+| 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existente, mas depende de variáveis/infra reais e etapas de approval. |
+| ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
+| ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
+
+## Backlog priorizado para Product Ready
+
+1. **Fortalecer a camada de proteção da API**: aplicar limites por rota, implementar idempotência baseada em Redis e adicionar cabeçalhos de segurança + testes.
+2. **Completar o pipeline de documentos**: versionamento simples, endpoint `/reindex`, replay paginado e instrumentação (traces/métricas) para API e worker.
+3. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
+4. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
+5. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.
+6. **Benchmarks e hardening final**: cenários Locust/wrk documentados, ajustes de performance, checklist de segurança concluído e testes E2E do frontend.
 
 ## Créditos
 

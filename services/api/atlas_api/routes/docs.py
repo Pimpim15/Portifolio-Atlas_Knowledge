@@ -5,16 +5,20 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import get_settings
 from ..db.models import Document
 from ..deps import CurrentUser, RBACGuard, get_db
 from ..queue.publisher import enqueue_delete, enqueue_index
+from ..security.ratelimit import init_rate_limiter
 
 router = APIRouter()
+settings = get_settings()
+limiter = init_rate_limiter()
 
 
 class DocumentBase(BaseModel):
@@ -35,7 +39,9 @@ class DocumentOut(DocumentBase):
 
 @router.post("", response_model=DocumentOut)
 @router.post("/", response_model=DocumentOut, include_in_schema=False)
+@limiter.limit(settings.rate_limit_mutation)
 async def create_document(
+    request: Request,
     payload: DocumentBase,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
@@ -61,8 +67,10 @@ class DocumentUpdate(DocumentBase):
 
 
 @router.put("/{doc_id}", response_model=DocumentOut)
+@limiter.limit(settings.rate_limit_mutation)
 async def update_document(
     doc_id: uuid.UUID,
+    request: Request,
     payload: DocumentUpdate,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
@@ -92,8 +100,10 @@ async def update_document(
 
 
 @router.get("/{doc_id}", response_model=DocumentOut)
+@limiter.limit(settings.rate_limit_default)
 async def get_document(
     doc_id: uuid.UUID,
+    request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["viewer", "editor", "admin"])),
     session: AsyncSession = Depends(get_db),
 ) -> DocumentOut:
@@ -111,8 +121,10 @@ async def get_document(
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(settings.rate_limit_mutation)
 async def delete_document(
     doc_id: uuid.UUID,
+    request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
