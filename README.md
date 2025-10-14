@@ -62,21 +62,33 @@ make dev
    - Frontend: http://localhost:5173
    - OpenSearch Dashboards: http://localhost:5601
 
-### Fluxo atual no frontend
+### Fluxo completo no frontend
 
-O login usa as credenciais fixas `admin@acme.com` / `admin`. Após autenticar, você verá a tela de busca. Os componentes principais ainda são _stubs_:
+1. **Login** — Utilize `admin@acme.com` / `admin`. As credenciais estão persistidas no banco com hash e a autenticação devolve _access token_ + _refresh token_.
+2. **Dashboard** — Após autenticar você cai na tela de busca. Tudo é dinâmico:
+  - A busca dispara `GET /search` e exibe os resultados tanto em cards quanto em um modal dedicado (com _snippet_ e tags).
+  - Exceções da API disparam um modal de erro com feedback amigável.
+  - Usuários `admin` ganham o botão **Novo documento**, que abre um modal com formulário para cadastrar runbooks/políticas via `POST /docs`.
+  - Sucessos de criação apresentam um modal de confirmação e atualizam automaticamente a grade de resultados.
+3. **Detalhes** — Ao abrir um item, a rota `/docs/{id}` traz o conteúdo completo com contexto visual moderno (chips de tags, versão, data relativa e _skeleton loader_ durante o carregamento).
 
-- O campo de busca dispara `GET /search?q=<termo>`, mas o _guard_ de RBAC ainda não está conectado ao JWT decodificado. Por isso, a API responde `403 Insufficient role` e o frontend permanece sem resultados.
-- As rotas de documentos (`POST /docs`, `GET /docs/{id}`) guardam o conteúdo em memória apenas durante o ciclo de vida do processo e também dependem do mesmo RBAC, então retornam `403` no estado atual.
-
-Para inspecionar o que está acontecendo abra o DevTools → aba **Network** e tente uma busca; você verá a resposta `403` da rota `/search`. Para validar as chamadas diretamente, utilize o Swagger em http://localhost:8000/docs ou scripts como:
+### Validando a API ponta a ponta
 
 ```powershell
+# 1. Autentique-se e capture o token
 $token = (Invoke-RestMethod -Method Post -Uri http://localhost:8000/auth/login -Body (@{ email = 'admin@acme.com'; password = 'admin' } | ConvertTo-Json) -ContentType 'application/json').access
-Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/search?q=runbook' -Headers @{ Authorization = "Bearer $token" }
+
+# 2. Consulte o perfil autenticado
+Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/users/me' -Headers @{ Authorization = "Bearer $token" }
+
+# 3. Busque documentos (com ou sem filtros de tags)
+Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/search?q=runbook&tags=incidentes' -Headers @{ Authorization = "Bearer $token" }
+
+# 4. Crie um novo documento
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Authorization = "Bearer $token" } -Body (@{ title = 'Checklist de DR'; body = 'Passo a passo de recuperação'; tags = @('dr','contingência') } | ConvertTo-Json) -ContentType 'application/json'
 ```
 
-O próximo passo de evolução é ligar o `RBACGuard` à decodificação do JWT (claims `roles`) e implementar a busca real contra o OpenSearch ou, provisoriamente, contra a coleção em memória de documentos.
+> Dica: também é possível explorar tudo via Swagger em http://localhost:8000/docs.
 
 ## Pipelines
 

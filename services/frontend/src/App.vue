@@ -8,7 +8,6 @@
 :host {
   display: block;
   min-height: 100vh;
-  background: #0f172a;
   color: #f8fafc;
 }
 </style>

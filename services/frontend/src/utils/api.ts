@@ -14,4 +14,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('atlas:access_token');
+      localStorage.removeItem('atlas:refresh_token');
+    }
+    return Promise.reject(error);
+  },
+);
+
 export default api;

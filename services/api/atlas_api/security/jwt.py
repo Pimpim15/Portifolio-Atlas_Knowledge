@@ -21,10 +21,21 @@ def _base_payload(sub: str, **extra: Any) -> dict[str, Any]:
     return payload
 
 
-def create_access_token(sub: str, email: str, roles: list[str] | None = None) -> str:
+def create_access_token(
+    sub: str,
+    email: str,
+    roles: list[str] | None = None,
+    organization_ids: list[str] | None = None,
+) -> str:
     settings = get_settings()
     exp = datetime.now(UTC) + timedelta(minutes=settings.access_token_ttl_minutes)
-    payload = _base_payload(sub, email=email, roles=roles or ["admin"], exp=int(exp.timestamp()))
+    payload = _base_payload(
+        sub,
+        email=email,
+        roles=roles or ["viewer"],
+        org_ids=organization_ids or [],
+        exp=int(exp.timestamp()),
+    )
     return cast(str, jwt.encode(payload, settings.jwt_private_key, algorithm=settings.jwt_algorithm))
 
 

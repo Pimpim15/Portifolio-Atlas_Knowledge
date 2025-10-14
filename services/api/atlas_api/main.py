@@ -28,6 +28,12 @@ def create_app() -> FastAPI:
     app.include_router(docs.router, prefix="/docs", tags=["docs"])
     app.include_router(search.router, prefix="/search", tags=["search"])
 
+    from .bootstrap import init_application
+
+    @app.on_event("startup")
+    async def _startup() -> None:
+        await init_application()
+
     return app
 
 
