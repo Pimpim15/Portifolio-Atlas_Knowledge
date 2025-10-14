@@ -1,0 +1,37 @@
+groups:
+  - name: atlas-reindex
+    interval: 30s
+    rules:
+      - alert: ReindexJobStuck
+        expr: atlas_reindex_job_oldest_active_seconds > 900
+        for: 5m
+        labels:
+          severity: critical
+          service: atlas-api
+        annotations:
+          summary: "Job de reindex preso há mais de 15 minutos"
+          description: |
+            O job de reindex mais antigo está pendente/rodando há {{ $value | humanizeDuration }}.
+            Verifique o worker e a fila SQS para identificar gargalos.
+      - alert: ReindexJobFailuresHigh
+        expr: rate(atlas_reindex_jobs_total{status="FAILED"}[10m]) > 0.05
+        for: 10m
+        labels:
+          severity: high
+          service: atlas-worker
+        annotations:
+          summary: "Falhas recorrentes em jobs de reindex"
+          description: |
+            A taxa de jobs de reindex falhos excedeu 0.05/min nos últimos 10 minutos (valor atual: {{ $value }}).
+            Analise os logs do worker para identificar o erro predominante.
+      - alert: ReindexProcessingStalled
+        expr: rate(atlas_reindex_job_items_status{status="RUNNING"}[5m]) == 0
+        for: 10m
+        labels:
+          severity: medium
+          service: atlas-worker
+        annotations:
+          summary: "Processamento dos itens de reindex está parado"
+          description: |
+            Nenhum item de reindex mudou para RUNNING nos últimos 5 minutos.
+            Possível saturação ou interrupção do worker.

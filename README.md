@@ -20,7 +20,9 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Pipeline assíncrono com SQS + worker Python para indexar e remover documentos no OpenSearch.
 - Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
- - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry. Reindex expõe gauges (`atlas_reindex_jobs_status`, `atlas_reindex_job_items_status`, `atlas_reindex_job_oldest_active_seconds`) para dashboards/alertas.
+- Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry. Reindex expõe gauges (`atlas_reindex_jobs_status`, `atlas_reindex_job_items_status`, `atlas_reindex_job_oldest_active_seconds`) para dashboards/alertas.
+  - Dashboard Grafana pronto (`infra/grafana/reindex-dashboard.json`) com visão operacional dos jobs/itens e tendências por hora.
+  - Regras de alerta Prometheus (`infra/otel/reindex-alert-rules.yaml`) cobrindo stuck jobs, falhas recorrentes e estagnação de processamento.
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
@@ -124,6 +126,14 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
 - OpenTelemetry instrumentando FastAPI, SQLAlchemy, HTTP clients. Export via OTLP para collector.
 - Middleware aplica `X-Request-ID` em todas as respostas e emite métricas Prometheus (`/metrics`).
 - Dashboards CloudWatch: latência p95, erros 5xx, backlog SQS, métricas RDS, saúde do OpenSearch.
+- Dashboard Grafana de reindex (`infra/grafana/reindex-dashboard.json`):
+  1. Em Grafana, acesse **Dashboards > New > Import**.
+  2. Cole o conteúdo do JSON ou selecione o arquivo local.
+  3. Aponte para o datasource Prometheus usado no ambiente (ajuste o UID `PROM_DS` se necessário).
+- Alertas Prometheus (`infra/otel/reindex-alert-rules.yaml`):
+  1. Referencie o arquivo na configuração do alertmanager/prometheus (`rule_files`).
+  2. Ajuste os rótulos `service`/`severity` conforme a taxonomia local.
+  3. Defina rotas no Alertmanager para e-mails/Slack incidentais.
 
 ## Segurança
 
