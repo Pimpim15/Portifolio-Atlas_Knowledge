@@ -1,0 +1,35 @@
+"""Funções utilitárias para JWT."""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
+
+from jose import jwt
+
+from ..config import get_settings
+
+
+def _base_payload(sub: str, **extra: Any) -> dict[str, Any]:
+    settings = get_settings()
+    now = datetime.now(UTC)
+    payload = {
+        "sub": sub,
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
+        "iat": int(now.timestamp()),
+        **extra,
+    }
+    return payload
+
+
+def create_access_token(sub: str, email: str, roles: list[str] | None = None) -> str:
+    settings = get_settings()
+    exp = datetime.now(UTC) + timedelta(minutes=settings.access_token_ttl_minutes)
+    payload = _base_payload(sub, email=email, roles=roles or ["admin"], exp=int(exp.timestamp()))
+    return cast(str, jwt.encode(payload, settings.jwt_private_key, algorithm=settings.jwt_algorithm))
+
+
+def create_refresh_token(sub: str) -> str:
+    settings = get_settings()
+    exp = datetime.now(UTC) + timedelta(minutes=settings.refresh_token_ttl_minutes)
+    payload = _base_payload(sub, token_type="refresh", exp=int(exp.timestamp()))
+    return cast(str, jwt.encode(payload, settings.jwt_private_key, algorithm=settings.jwt_algorithm))

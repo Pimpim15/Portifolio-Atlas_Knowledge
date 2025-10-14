@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.python-version
+
+# Poetry / Pipenv
+poetry.lock
+pip-wheel-metadata/
+
+# Node
+node_modules/
+dist/
+*.log
+pnpm-lock.yaml
+yarn.lock
+
+# Vite
+.vite/
+
+# Vue
+*.local
+
+# VSCode
+.vscode/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+
+# Docker
+.env
+.env.*
+.docker/
+
+# Coverage
+htmlcov/
+.coverage*
+.pytest_cache/
+.mypy_cache/
+ruff_cache/
+
+# Misc
+.DS_Store
+Thumbs.db
+.idea/

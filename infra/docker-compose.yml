@@ -1,0 +1,121 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    command: poetry run uvicorn services.api.atlas_api.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      DATABASE_URL: postgresql+asyncpg://atlas:atlas@postgres:5432/atlas
+      REDIS_URL: redis://redis:6379/0
+      OPENSEARCH_ENDPOINT: https://opensearch:9200
+      JWT_ISSUER: atlas-knowledge
+      JWT_AUDIENCE: '["atlas-api"]'
+      JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\n<replace>\n-----END PRIVATE KEY-----"
+      JWT_PUBLIC_KEY: "-----BEGIN PUBLIC KEY-----\n<replace>\n-----END PUBLIC KEY-----"
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/docs-events
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://adot:4318
+      RATE_LIMIT_DEFAULT: 60/minute
+      RATE_LIMIT_AUTH: 10/minute
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: services/worker/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://atlas:atlas@postgres:5432/atlas
+      OPENSEARCH_ENDPOINT: https://opensearch:9200
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/docs-events
+      JWT_AUDIENCE: '["atlas-api"]'
+    depends_on:
+      - redis
+      - opensearch
+      - localstack
+
+  frontend:
+    build: ../services/frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas
+      POSTGRES_DB: atlas
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "atlas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:2.13.0
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+    ports:
+      - "5601:5601"
+    depends_on:
+      - opensearch
+
+  localstack:
+    image: localstack/localstack:3.0
+    environment:
+      SERVICES: sqs
+      EDGE_PORT: 4566
+    ports:
+      - "4566:4566"
+
+  adot:
+    image: public.ecr.aws/aws-observability/aws-otel-collector:latest
+    command: ["--config=/etc/otel-agent-config.yaml"]
+    volumes:
+      - ./otel/otel-agent-config.yaml:/etc/otel-agent-config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+volumes:
+  pgdata:
