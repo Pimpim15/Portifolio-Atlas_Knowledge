@@ -20,6 +20,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Pipeline assíncrono com SQS + worker Python para indexar e remover documentos no OpenSearch.
 - Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
+ - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry. Reindex expõe gauges (`atlas_reindex_jobs_status`, `atlas_reindex_job_items_status`, `atlas_reindex_job_oldest_active_seconds`) para dashboards/alertas.
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.

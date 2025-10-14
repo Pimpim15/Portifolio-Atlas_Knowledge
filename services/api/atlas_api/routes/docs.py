@@ -19,6 +19,7 @@ from ..deps import CurrentUser, RBACGuard, get_db, get_redis
 from ..observability.logging import get_logger
 from ..observability.metrics import REINDEX_JOB_COUNT, REINDEX_JOB_LATENCY
 from ..queue.publisher import enqueue_delete, enqueue_index, enqueue_reindex_document
+from ..reindex.progress import update_reindex_metrics
 from ..security.idempotency import build_idempotency_context
 from ..security.ratelimit import init_rate_limiter
 
@@ -318,6 +319,7 @@ async def trigger_reindex(
 
         await session.commit()
         await session.refresh(job)
+        await update_reindex_metrics(session)
 
         job_status_value = job.status.value
 
