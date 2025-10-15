@@ -53,17 +53,19 @@ module "alb" {
 }
 
 module "ecs" {
-  source                = "./modules/ecs_service"
-  environment           = var.environment
-  vpc_id                = module.vpc.vpc_id
-  private_subnet_ids    = module.vpc.private_subnet_ids
-  cluster_name          = "atlas-knowledge"
-  rds_secret_arn        = module.rds.secret_arn
-  opensearch_endpoint   = module.opensearch.endpoint
-  sqs_queue_arn         = module.sqs.queue_arn
-  sqs_queue_url         = module.sqs.queue_url
-  alb_security_group_id = module.alb.security_group_id
-  api_target_group_arn  = module.alb.api_target_group_arn
+  source                    = "./modules/ecs_service"
+  environment               = var.environment
+  vpc_id                    = module.vpc.vpc_id
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  cluster_name              = "atlas-knowledge"
+  rds_secret_arn            = module.rds.secret_arn
+  opensearch_endpoint       = module.opensearch.endpoint
+  sqs_queue_arn             = module.sqs.queue_arn
+  sqs_queue_url             = module.sqs.queue_url
+  alb_security_group_id     = module.alb.security_group_id
+  api_target_group_arn      = module.alb.api_target_group_arn
+  frontend_target_group_arn = module.alb.frontend_target_group_arn
+  enable_frontend           = true
 }
 
 module "oidc" {

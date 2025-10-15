@@ -8,6 +8,11 @@ variable "sqs_queue_arn" { type = string }
 variable "sqs_queue_url" { type = string }
 variable "alb_security_group_id" { type = string }
 variable "api_target_group_arn" { type = string }
+variable "frontend_target_group_arn" {
+  type        = string
+  default     = ""
+  description = "Target group ARN para o frontend"
+}
 variable "api_image" {
   type    = string
   default = "123456789012.dkr.ecr.us-east-1.amazonaws.com/atlas-api:latest"
@@ -15,6 +20,10 @@ variable "api_image" {
 variable "worker_image" {
   type    = string
   default = "123456789012.dkr.ecr.us-east-1.amazonaws.com/atlas-worker:latest"
+}
+variable "frontend_image" {
+  type    = string
+  default = "123456789012.dkr.ecr.us-east-1.amazonaws.com/atlas-frontend:latest"
 }
 
 variable "api_desired_count" {
@@ -42,6 +51,32 @@ variable "worker_desired_count" {
   default = 1
 }
 
+variable "frontend_desired_count" {
+  type    = number
+  default = 2
+}
+
+variable "frontend_min_capacity" {
+  type    = number
+  default = 2
+}
+
+variable "frontend_max_capacity" {
+  type    = number
+  default = 4
+}
+
+variable "frontend_scale_cpu_threshold" {
+  type    = number
+  default = 55
+}
+
+variable "enable_frontend" {
+  type        = bool
+  default     = false
+  description = "Cria service Fargate para o frontend"
+}
+
 data "aws_region" "current" {}
 
 resource "aws_ecs_cluster" "this" {
@@ -55,6 +90,12 @@ resource "aws_cloudwatch_log_group" "api" {
 
 resource "aws_cloudwatch_log_group" "worker" {
   name              = "/aws/ecs/atlas-worker-${var.environment}"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "frontend" {
+  count             = var.enable_frontend ? 1 : 0
+  name              = "/aws/ecs/atlas-frontend-${var.environment}"
   retention_in_days = 14
 }
 
@@ -163,6 +204,60 @@ resource "aws_ecs_service" "worker" {
   }
 }
 
+resource "aws_ecs_task_definition" "frontend" {
+  count                    = var.enable_frontend ? 1 : 0
+  family                   = "atlas-frontend-${var.environment}"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  container_definitions = jsonencode([
+    {
+      name         = "frontend"
+      image        = var.frontend_image
+      essential    = true
+      portMappings = [{ containerPort = 80, protocol = "tcp" }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.frontend[0].name
+          awslogs-region        = data.aws_region.current.name
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+      environment = []
+    }
+  ])
+}
+
+resource "aws_ecs_service" "frontend" {
+  count                              = var.enable_frontend && length(var.frontend_target_group_arn) > 0 ? 1 : 0
+  name                               = "atlas-frontend-${var.environment}"
+  cluster                            = aws_ecs_cluster.this.id
+  task_definition                    = aws_ecs_task_definition.frontend[0].arn
+  desired_count                      = var.frontend_desired_count
+  launch_type                        = "FARGATE"
+  health_check_grace_period_seconds  = 60
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+  enable_execute_command             = true
+
+  network_configuration {
+    subnets          = var.private_subnet_ids
+    assign_public_ip = false
+    security_groups  = [aws_security_group.frontend[0].id]
+  }
+
+  load_balancer {
+    target_group_arn = var.frontend_target_group_arn
+    container_name   = "frontend"
+    container_port   = 80
+  }
+}
+
 resource "aws_security_group" "ecs_tasks" {
   name        = "atlas-ecs-api-${var.environment}"
   description = "Permite ALB acessar tasks da API"
@@ -187,6 +282,27 @@ resource "aws_security_group" "worker" {
   name        = "atlas-ecs-worker-${var.environment}"
   description = "Permite worker sair para serviços externos"
   vpc_id      = var.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "frontend" {
+  count       = var.enable_frontend ? 1 : 0
+  name        = "atlas-ecs-frontend-${var.environment}"
+  description = "Permite ALB acessar tasks do frontend"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [var.alb_security_group_id]
+  }
 
   egress {
     from_port   = 0
@@ -231,9 +347,12 @@ resource "aws_iam_role_policy" "task" {
         Resource = [var.sqs_queue_arn]
       },
       {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = ["${aws_cloudwatch_log_group.api.arn}:*", "${aws_cloudwatch_log_group.worker.arn}:*"]
+        Effect = "Allow"
+        Action = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = concat(
+          ["${aws_cloudwatch_log_group.api.arn}:*", "${aws_cloudwatch_log_group.worker.arn}:*"],
+          var.enable_frontend ? ["${aws_cloudwatch_log_group.frontend[0].arn}:*"] : []
+        )
       },
       {
         Effect   = "Allow"
@@ -269,6 +388,33 @@ resource "aws_appautoscaling_policy" "api_cpu" {
   }
 }
 
+resource "aws_appautoscaling_target" "frontend" {
+  count              = var.enable_frontend && length(var.frontend_target_group_arn) > 0 ? 1 : 0
+  max_capacity       = var.frontend_max_capacity
+  min_capacity       = var.frontend_min_capacity
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.frontend[0].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "frontend_cpu" {
+  count              = var.enable_frontend && length(var.frontend_target_group_arn) > 0 ? 1 : 0
+  name               = "atlas-frontend-cpu-${var.environment}"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.frontend[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.frontend[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.frontend[0].service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value       = var.frontend_scale_cpu_threshold
+    scale_in_cooldown  = 120
+    scale_out_cooldown = 60
+  }
+}
+
 output "api_service_name" {
   value = aws_ecs_service.api.name
 }
@@ -283,4 +429,12 @@ output "cluster_arn" {
 
 output "api_security_group_id" {
   value = aws_security_group.ecs_tasks.id
+}
+
+output "frontend_service_name" {
+  value = try(aws_ecs_service.frontend[0].name, null)
+}
+
+output "frontend_security_group_id" {
+  value = try(aws_security_group.frontend[0].id, null)
 }
