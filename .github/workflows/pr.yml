@@ -70,3 +70,53 @@ jobs:
           languages: python,javascript
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+  locust-smoke:
+    needs:
+      - lint-test
+      - frontend
+      - security
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LOCUST_HOST: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Poetry
+        run: pip install poetry==1.8.3
+      - name: Install dependencies
+        run: poetry install
+      - name: Start application stack (API only)
+        run: docker compose -f infra/docker-compose.yml up -d api
+      - name: Aguarda API ficar saudável
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            if curl -sSf "${LOCUST_HOST}/health" > /dev/null; then
+              exit 0
+            fi
+            echo "Aguardando API... tentativa ${attempt}";
+            sleep 10
+          done
+          echo "API não ficou saudável a tempo" >&2
+          exit 1
+      - name: Executa smoke test Locust
+        run: |
+          poetry run python bench/run_headless.py \
+            --host ${LOCUST_HOST} \
+            --users 5 \
+            --spawn-rate 2 \
+            --run-time 1m \
+            --prefix pr-smoke
+      - name: Publica resultados do Locust
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-pr-smoke
+          path: bench/results
+          if-no-files-found: warn
+      - name: Finaliza ambiente docker
+        if: always()
+        run: docker compose -f infra/docker-compose.yml down -v

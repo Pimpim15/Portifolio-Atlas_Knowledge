@@ -52,6 +52,6 @@ wrk -t4 -c128 -d60s https://atlas.dev.example.com/health
 
 ## Próximos passos sugeridos
 
-- Integrar um _smoke test_ Locust no pipeline de PR.
+- ✅ Smoke test Locust integrado ao pipeline de PR (`.github/workflows/pr.yml` → job `locust-smoke`).
 - Adicionar cenários que publiquem documentos em lote antes das consultas.
 - Armazenar artefatos com os relatórios de teste para comparação histórica.

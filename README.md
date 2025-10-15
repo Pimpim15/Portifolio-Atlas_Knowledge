@@ -4,43 +4,32 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 
 ## Visão geral
 
-- **API**: FastAPI + SQLAlchemy + Alembic, autenticação JWT RS256, RBAC, idempotência via Redis e rate-limit nas mutações.
-- **Worker**: Poller em Python consumindo SQS diretamente (boto3) para indexação no OpenSearch.
-- **Frontend**: Vue 3 + Pinia + Vite consumindo a API.
-- **Busca**: OpenSearch com analyzers PT/EN, sinônimos e filtros por tags, com _fallback_ automático para PostgreSQL.
-- **Infraestrutura**: Terraform para VPC, ECS Fargate, RDS, OpenSearch, SQS, Secrets Manager, IAM OIDC.
 - **Observabilidade**: OpenTelemetry → ADOT → AWS X-Ray, CloudWatch Logs, métricas e alarmes.
 - **Qualidade**: pytest (unit, integração, e2e), cobertura ≥ 85%, lint (ruff), mypy, pre-commit, Trivy e CodeQL.
-
-## Status do projeto
 
 ### ✅ Entregue
 
 - API FastAPI com autenticação JWT RS256, RBAC por organização e rotas principais (`/auth`, `/users`, `/docs`, `/search`) com _fallback_ para PostgreSQL.
-- Pipeline assíncrono com SQS + worker Python para indexar e remover documentos no OpenSearch.
 - Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
   - Dashboard Grafana pronto (`infra/grafana/reindex-dashboard.json`) com visão operacional dos jobs/itens e tendências por hora.
-  - Regras de alerta Prometheus (`infra/otel/reindex-alert-rules.yaml`) cobrindo stuck jobs, falhas recorrentes e estagnação de processamento.
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
 - Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
-- Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros, painel administrativo no frontend e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 - Módulo Terraform de SQS com DLQ, SSE e alarmes CloudWatch para o pipeline de documentos.
 - Módulo Terraform de VPC com IGW, NAT Gateway, sub-redes públicas/privadas multi-AZ configuráveis e rotas por zona.
   - NAT Gateway por AZ opcional: ambientes não críticos podem usar uma única saída compartilhada para reduzir custos.
-- Application Load Balancer com HTTPS (ACM), SG dedicado, redirecionamento HTTP→HTTPS e roteamento para API/Frontend.
 - RDS PostgreSQL com subnet group privado, secret gerenciado no Secrets Manager e senha randômica gerada via Terraform.
 - OpenSearch hospedado em sub-redes privadas, com TLS obrigatório, logs em CloudWatch e criptografia em trânsito/em repouso.
 - Alarmes CloudWatch para saúde do OpenSearch (status, armazenamento, pressão JVM).
 - Dashboard operacional no CloudWatch (`atlas-<env>-operations`) com métricas de SQS, ECS, RDS e OpenSearch.
 - Alarmes adicionais no CloudWatch para CPU/memória do ECS (API, worker e frontend).
-- Propagação de trace W3C nas mensagens SQS e spans filhos no worker para correlação ponta a ponta.
 - Consultas CloudWatch Logs Insights versionadas (falhas do worker, erros 5xx e frontend) criadas via Terraform.
 - Frontend Vue servindo via ECS Fargate atrás do ALB, com autoscaling baseado em CPU.
 - Sidecar AWS Distro for OpenTelemetry nas tasks ECS (API/worker) exportando métricas e traces para a AWS.
-- Secrets Manager com rotação automática do segredo RDS via Lambda gerenciada e parametrizada pelo Terraform.
+- RDS com autoscaling de armazenamento (`max_allocated_storage`) e opção de Performance Insights por ambiente.
+- AWS Budgets configurável por ambiente com alertas de custo (e-mail) controlados via Terraform.
 
 ### ⚠️ Pendências
 
@@ -50,7 +39,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 | ✅ | Observabilidade ponta a ponta | Tracing cross-service ativo (SQS → worker), dashboard + alarmes CloudWatch, queries Log Insights versionadas e evidências publicadas em `docs/observability.md`. |
 | ✅ | Terraform com recursos reais | Infra estratificada com rotação automática do segredo RDS via Lambda gerenciada, otimizações de custo e observabilidade nativa. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipeline com planos/applies para dev/stage/prod, ambientes protegidos e redeploy ECS por ambiente. |
-| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless (`bench/run_headless.py`) e relatório de exemplo incluídos; falta executar cargas oficiais e anexar resultados consolidados. |
+| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless (`bench/run_headless.py`) e _smoke_ no PR (`locust-smoke`) prontos; falta executar cargas oficiais e anexar resultados consolidados. |
 
 ## Arquitetura
 
@@ -133,7 +122,11 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
 
 ## Pipelines
 
-- `pr.yml`: lint (ruff), type-check (mypy), testes (pytest + coverage ≥ 85%), CodeQL, Trivy.
+- `pr.yml`: orquestra verificações paralelas antes do merge.
+  - `lint-test`: instala dependências via Poetry, roda Ruff, MyPy e pytest (gera `coverage.xml` ≥ 85%).
+  - `frontend`: instala deps Node 20, roda `npm run lint` e `npm run build` no SPA.
+  - `security`: executa Trivy (fs scan) e CodeQL (init/analyze) para Python e JavaScript.
+  - `locust-smoke`: sobe a stack Docker localmente, executa Locust headless por 1 minuto e publica os CSVs como artefato.
 - `deploy.yml`: build/push imagens para ECR e executa Terraform plan/apply com approvals por ambiente (dev, stage, prod) antes de forçar novo deploy das services ECS.
 
 ## Observabilidade

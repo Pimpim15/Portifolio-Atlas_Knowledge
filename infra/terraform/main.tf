@@ -29,6 +29,9 @@ module "rds" {
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
   vpc_cidr_block     = module.vpc.cidr_block
+  allocated_storage  = var.rds_allocated_storage
+  max_allocated_storage = var.rds_max_allocated_storage
+  performance_insights_enabled = var.rds_performance_insights_enabled
 }
 
 module "rds_rotation_lambda" {

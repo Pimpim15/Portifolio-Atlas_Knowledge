@@ -4,3 +4,7 @@ alb_certificate_arn        = "arn:aws:acm:us-east-1:123456789012:certificate/exa
 vpc_az_count               = 2
 vpc_nat_gateway_per_az     = false
 enable_rds_secret_rotation = false
+rds_allocated_storage       = 20
+rds_max_allocated_storage   = 40
+rds_performance_insights_enabled = false
+enable_cost_budget          = false

@@ -27,6 +27,24 @@ variable "multi_az" {
   description = "Ativa instância Multi-AZ"
 }
 
+variable "allocated_storage" {
+  type        = number
+  default     = 20
+  description = "Armazenamento inicial (GB) do banco"
+}
+
+variable "max_allocated_storage" {
+  type        = number
+  default     = 100
+  description = "Limite máximo (GB) para autoscaling de armazenamento"
+}
+
+variable "performance_insights_enabled" {
+  type        = bool
+  default     = false
+  description = "Habilita Performance Insights no RDS"
+}
+
 locals {
   base_tags = {
     Environment = var.environment
@@ -75,7 +93,8 @@ resource "aws_db_instance" "this" {
   engine                     = "postgres"
   engine_version             = "15.5"
   instance_class             = "db.t4g.micro"
-  allocated_storage          = 20
+  allocated_storage          = var.allocated_storage
+  max_allocated_storage      = var.max_allocated_storage
   username                   = var.db_username
   password                   = random_password.db.result
   db_name                    = var.db_name
@@ -88,6 +107,7 @@ resource "aws_db_instance" "this" {
   auto_minor_version_upgrade = true
   deletion_protection        = false
   vpc_security_group_ids     = [aws_security_group.db.id]
+  performance_insights_enabled = var.performance_insights_enabled
 
   tags = merge(local.base_tags, { Name = "atlas-${var.environment}-pg" })
 }

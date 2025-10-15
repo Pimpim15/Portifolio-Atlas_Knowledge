@@ -67,3 +67,45 @@ variable "rds_secret_rotation_password_length" {
   type        = number
   default     = 30
 }
+
+variable "rds_allocated_storage" {
+  description = "Armazenamento inicial (GB) da instância RDS"
+  type        = number
+  default     = 20
+}
+
+variable "rds_max_allocated_storage" {
+  description = "Limite máximo (GB) para autoscaling de armazenamento do RDS"
+  type        = number
+  default     = 100
+}
+
+variable "rds_performance_insights_enabled" {
+  description = "Habilita Performance Insights na instância RDS"
+  type        = bool
+  default     = false
+}
+
+variable "enable_cost_budget" {
+  description = "Cria um orçamento mensal no AWS Budgets para o ambiente"
+  type        = bool
+  default     = false
+}
+
+variable "cost_budget_amount" {
+  description = "Valor mensal (USD) do orçamento"
+  type        = number
+  default     = 300
+}
+
+variable "cost_budget_threshold_percent" {
+  description = "Percentual do orçamento que aciona notificação"
+  type        = number
+  default     = 80
+}
+
+variable "cost_budget_emails" {
+  description = "Lista de e-mails que receberão alertas do orçamento"
+  type        = list(string)
+  default     = []
+}
