@@ -32,6 +32,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Application Load Balancer com HTTPS (ACM), SG dedicado, redirecionamento HTTP→HTTPS e roteamento para API/Frontend.
 - RDS PostgreSQL com subnet group privado, secret gerenciado no Secrets Manager e senha randômica gerada via Terraform.
 - OpenSearch hospedado em sub-redes privadas, com TLS obrigatório, logs em CloudWatch e criptografia em trânsito/em repouso.
+- Alarmes CloudWatch para saúde do OpenSearch (status, armazenamento, pressão JVM).
 
 ### ⚠️ Pendências
 
@@ -39,7 +40,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 | --- | --- | --- |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Dashboards/alertas CloudWatch, enriquecimento de traces cross-service e publicação de screenshots/logs no README. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT, HTTPS, Secrets Manager, TLS + logs). Pendências: autoscaling frontend, parametrização multi-AZ avançada. |
+| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT, HTTPS, Secrets Manager, TLS + logs, alarmes). Pendências: autoscaling frontend, parametrização multi-AZ avançada. |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existe, depende de variáveis/infra reais e etapas de approval. |
 | ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
 | ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
@@ -169,7 +170,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch maduras (DLQ, SSE, IGW, NAT, HTTPS, Secrets Manager, TLS + logs). Pendências: autoscaling frontend, parametrização multi-AZ. |
+| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch maduras (DLQ, SSE, IGW, NAT, HTTPS, Secrets Manager, TLS + logs, alarmes). Pendências: autoscaling frontend, parametrização multi-AZ. |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existente, mas depende de variáveis/infra reais e etapas de approval. |
 | ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
 | ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |

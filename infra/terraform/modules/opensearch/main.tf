@@ -17,6 +17,17 @@ variable "ebs_volume_size" {
   default     = 100
   description = "Tamanho (GiB) do volume EBS por nó"
 }
+variable "alarm_actions" {
+  type        = list(string)
+  description = "ARNs acionados quando alarmes disparam"
+  default     = []
+}
+
+variable "ok_actions" {
+  type        = list(string)
+  description = "ARNs acionados quando alarmes normalizam"
+  default     = []
+}
 variable "tags" {
   type        = map(string)
   description = "Tags adicionais para os recursos"
@@ -160,4 +171,96 @@ output "security_group_id" {
 
 output "domain_arn" {
   value = aws_opensearch_domain.this.arn
+}
+
+resource "aws_cloudwatch_metric_alarm" "cluster_red" {
+  alarm_name          = "atlas-${var.environment}-opensearch-cluster-red"
+  namespace           = "AWS/ES"
+  metric_name         = "ClusterStatus.red"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Cluster OpenSearch em estado RED"
+  actions_enabled     = length(var.alarm_actions) > 0
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.ok_actions
+
+  dimensions = {
+    DomainName = aws_opensearch_domain.this.domain_name
+    ClientId   = data.aws_caller_identity.current.account_id
+  }
+
+  tags = local.base_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "cluster_yellow" {
+  alarm_name          = "atlas-${var.environment}-opensearch-cluster-yellow"
+  namespace           = "AWS/ES"
+  metric_name         = "ClusterStatus.yellow"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 3
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Cluster OpenSearch em estado YELLOW por 3 minutos"
+  actions_enabled     = length(var.alarm_actions) > 0
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.ok_actions
+
+  dimensions = {
+    DomainName = aws_opensearch_domain.this.domain_name
+    ClientId   = data.aws_caller_identity.current.account_id
+  }
+
+  tags = local.base_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "storage_low" {
+  alarm_name          = "atlas-${var.environment}-opensearch-storage-low"
+  namespace           = "AWS/ES"
+  metric_name         = "FreeStorageSpace"
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 20480
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+  alarm_description   = "Espaço livre em disco inferior a 20GiB"
+  actions_enabled     = length(var.alarm_actions) > 0
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.ok_actions
+
+  dimensions = {
+    DomainName = aws_opensearch_domain.this.domain_name
+    ClientId   = data.aws_caller_identity.current.account_id
+  }
+
+  tags = local.base_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "jvm_high" {
+  alarm_name          = "atlas-${var.environment}-opensearch-jvm-high"
+  namespace           = "AWS/ES"
+  metric_name         = "JVMMemoryPressure"
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = 85
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Pressão JVM acima de 85% por 15 minutos"
+  actions_enabled     = length(var.alarm_actions) > 0
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.ok_actions
+
+  dimensions = {
+    DomainName = aws_opensearch_domain.this.domain_name
+    ClientId   = data.aws_caller_identity.current.account_id
+  }
+
+  tags = local.base_tags
 }
