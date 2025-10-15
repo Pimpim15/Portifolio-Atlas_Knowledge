@@ -69,9 +69,9 @@ resource "aws_ecs_task_definition" "api" {
 
   container_definitions = jsonencode([
     {
-      name      = "api"
-      image     = var.api_image
-      essential = true
+      name         = "api"
+      image        = var.api_image
+      essential    = true
       portMappings = [{ containerPort = 8000, protocol = "tcp" }]
       logConfiguration = {
         logDriver = "awslogs"
@@ -93,12 +93,12 @@ resource "aws_ecs_task_definition" "api" {
 }
 
 resource "aws_ecs_service" "api" {
-  name            = "atlas-api-${var.environment}"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.api.arn
-  desired_count   = var.api_desired_count
-  launch_type     = "FARGATE"
-  health_check_grace_period_seconds = 60
+  name                               = "atlas-api-${var.environment}"
+  cluster                            = aws_ecs_cluster.this.id
+  task_definition                    = aws_ecs_task_definition.api.arn
+  desired_count                      = var.api_desired_count
+  launch_type                        = "FARGATE"
+  health_check_grace_period_seconds  = 60
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
   enable_execute_command             = true
@@ -149,11 +149,11 @@ resource "aws_ecs_task_definition" "worker" {
 }
 
 resource "aws_ecs_service" "worker" {
-  name            = "atlas-worker-${var.environment}"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.worker.arn
-  desired_count   = var.worker_desired_count
-  launch_type     = "FARGATE"
+  name                   = "atlas-worker-${var.environment}"
+  cluster                = aws_ecs_cluster.this.id
+  task_definition        = aws_ecs_task_definition.worker.arn
+  desired_count          = var.worker_desired_count
+  launch_type            = "FARGATE"
   enable_execute_command = true
 
   network_configuration {
@@ -201,15 +201,15 @@ resource "aws_iam_role" "task" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "ecs-tasks.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
 
 resource "aws_iam_role" "execution" {
-  name = "atlas-execution-${var.environment}"
+  name               = "atlas-execution-${var.environment}"
   assume_role_policy = aws_iam_role.task.assume_role_policy
 }
 
@@ -236,8 +236,8 @@ resource "aws_iam_role_policy" "task" {
         Resource = ["${aws_cloudwatch_log_group.api.arn}:*", "${aws_cloudwatch_log_group.worker.arn}:*"]
       },
       {
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
         Resource = [var.rds_secret_arn]
       }
     ]

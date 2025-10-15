@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
@@ -18,9 +22,11 @@ module "vpc" {
 }
 
 module "rds" {
-  source      = "./modules/rds_postgres"
-  environment = var.environment
-  vpc_id      = module.vpc.vpc_id
+  source             = "./modules/rds_postgres"
+  environment        = var.environment
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  vpc_cidr_block     = module.vpc.cidr_block
 }
 
 module "opensearch" {

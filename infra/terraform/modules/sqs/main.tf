@@ -48,8 +48,8 @@ locals {
   base_tags = merge(
     {
       Environment = var.environment
-      Service      = "atlas-knowledge"
-      ManagedBy    = "terraform"
+      Service     = "atlas-knowledge"
+      ManagedBy   = "terraform"
     },
     var.tags,
   )
@@ -59,7 +59,7 @@ resource "aws_sqs_queue" "docs_dlq" {
   name                      = "atlas-${var.environment}-docs-events-dlq"
   message_retention_seconds = var.dead_letter_retention_seconds
   sqs_managed_sse_enabled   = true
-  redrive_allow_policy      = jsonencode({
+  redrive_allow_policy = jsonencode({
     redrivePermission = "byQueue"
     sourceQueueArns   = ["*"]
   })
@@ -67,11 +67,11 @@ resource "aws_sqs_queue" "docs_dlq" {
 }
 
 resource "aws_sqs_queue" "docs" {
-  name                        = "atlas-${var.environment}-docs-events"
-  visibility_timeout_seconds  = var.visibility_timeout_seconds
-  message_retention_seconds   = var.message_retention_seconds
-  sqs_managed_sse_enabled     = true
-  redrive_policy              = jsonencode({
+  name                       = "atlas-${var.environment}-docs-events"
+  visibility_timeout_seconds = var.visibility_timeout_seconds
+  message_retention_seconds  = var.message_retention_seconds
+  sqs_managed_sse_enabled    = true
+  redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.docs_dlq.arn
     maxReceiveCount     = var.max_receive_count
   })

@@ -59,12 +59,12 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_lb" "this" {
-  name               = "atlas-${var.environment}-alb"
-  load_balancer_type = "application"
-  internal           = false
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = var.public_subnet_ids
-  idle_timeout       = 60
+  name                       = "atlas-${var.environment}-alb"
+  load_balancer_type         = "application"
+  internal                   = false
+  security_groups            = [aws_security_group.alb.id]
+  subnets                    = var.public_subnet_ids
+  idle_timeout               = 60
   drop_invalid_header_fields = true
 
   tags = merge(local.base_tags, { Name = "atlas-${var.environment}-alb" })

@@ -31,14 +31,14 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  azs        = slice(data.aws_availability_zones.available.names, 0, 2)
-  base_tags  = merge({ Environment = var.environment, Service = "atlas-knowledge", ManagedBy = "terraform" }, var.tags)
+  azs       = slice(data.aws_availability_zones.available.names, 0, 2)
+  base_tags = merge({ Environment = var.environment, Service = "atlas-knowledge", ManagedBy = "terraform" }, var.tags)
   public_map = {
     for idx, az in local.azs : idx => {
-      az        = az
-      cidr      = cidrsubnet(var.cidr_block, var.public_subnet_newbits, idx)
-      name      = "atlas-${var.environment}-public-${idx}"
-      map_ip    = true
+      az     = az
+      cidr   = cidrsubnet(var.cidr_block, var.public_subnet_newbits, idx)
+      name   = "atlas-${var.environment}-public-${idx}"
+      map_ip = true
     }
   }
   private_map = {
@@ -54,7 +54,7 @@ resource "aws_vpc" "this" {
   cidr_block           = var.cidr_block
   enable_dns_support   = true
   enable_dns_hostnames = true
-  tags = merge(local.base_tags, { Name = "atlas-${var.environment}-vpc" })
+  tags                 = merge(local.base_tags, { Name = "atlas-${var.environment}-vpc" })
 }
 
 resource "aws_internet_gateway" "igw" {
@@ -159,4 +159,8 @@ output "private_route_table_id" {
 
 output "nat_gateway_id" {
   value = aws_nat_gateway.nat.id
+}
+
+output "cidr_block" {
+  value = var.cidr_block
 }
