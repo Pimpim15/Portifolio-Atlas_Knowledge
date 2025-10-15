@@ -77,7 +77,143 @@ variable "enable_frontend" {
   description = "Cria service Fargate para o frontend"
 }
 
+variable "enable_otel_sidecar" {
+  type        = bool
+  default     = false
+  description = "Adiciona sidecar do AWS Distro for OpenTelemetry nas tasks"
+}
+
+variable "otel_collector_image" {
+  type        = string
+  default     = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+  description = "Imagem usada pelo sidecar do ADOT collector"
+}
+
 data "aws_region" "current" {}
+
+locals {
+  api_environment = concat(
+    [
+      { name = "DATABASE_SECRET_ARN", value = var.rds_secret_arn },
+      { name = "OPENSEARCH_ENDPOINT", value = var.opensearch_endpoint },
+      { name = "SQS_QUEUE_ARN", value = var.sqs_queue_arn },
+      { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
+      { name = "AWS_REGION", value = data.aws_region.current.name }
+    ],
+    var.enable_otel_sidecar ? [
+      { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://127.0.0.1:4317" },
+      { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "grpc" },
+      { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.name=atlas-api,service.namespace=atlas-knowledge,deployment.environment=${var.environment}" }
+    ] : []
+  )
+
+  worker_environment = concat(
+    [
+      { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
+      { name = "SQS_QUEUE_ARN", value = var.sqs_queue_arn },
+      { name = "OPENSEARCH_ENDPOINT", value = var.opensearch_endpoint },
+      { name = "AWS_REGION", value = data.aws_region.current.name }
+    ],
+    var.enable_otel_sidecar ? [
+      { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://127.0.0.1:4317" },
+      { name = "OTEL_EXPORTER_OTLP_PROTOCOL", value = "grpc" },
+      { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.name=atlas-worker,service.namespace=atlas-knowledge,deployment.environment=${var.environment}" }
+    ] : []
+  )
+
+  adot_environment = [
+    { name = "AWS_REGION", value = data.aws_region.current.name }
+  ]
+
+  api_container = merge(
+    {
+      name         = "api"
+      image        = var.api_image
+      essential    = true
+      portMappings = [{ containerPort = 8000, protocol = "tcp" }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.api.name
+          awslogs-region        = data.aws_region.current.name
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+      environment = local.api_environment
+    },
+    var.enable_otel_sidecar ? {
+      dependsOn = [{
+        containerName = "adot"
+        condition     = "START"
+      }]
+    } : {}
+  )
+
+  worker_container = merge(
+    {
+      name      = "worker"
+      image     = var.worker_image
+      essential = true
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.worker.name
+          awslogs-region        = data.aws_region.current.name
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+      environment = local.worker_environment
+    },
+    var.enable_otel_sidecar ? {
+      dependsOn = [{
+        containerName = "adot"
+        condition     = "START"
+      }]
+    } : {}
+  )
+
+  api_adot_container = {
+    name      = "adot"
+    image     = var.otel_collector_image
+    essential = true
+    command   = ["--config=/etc/ecs/ecs-default-config.yaml"]
+    environment = concat(
+      local.adot_environment,
+      [
+        { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.name=atlas-api,service.namespace=atlas-knowledge,deployment.environment=${var.environment}" }
+      ]
+    )
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = try(aws_cloudwatch_log_group.api_adot[0].name, "")
+        awslogs-region        = data.aws_region.current.name
+        awslogs-stream-prefix = "ecs"
+      }
+    }
+  }
+
+  worker_adot_container = {
+    name      = "adot"
+    image     = var.otel_collector_image
+    essential = true
+    command   = ["--config=/etc/ecs/ecs-default-config.yaml"]
+    environment = concat(
+      local.adot_environment,
+      [
+        { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.name=atlas-worker,service.namespace=atlas-knowledge,deployment.environment=${var.environment}" }
+      ]
+    )
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = try(aws_cloudwatch_log_group.worker_adot[0].name, "")
+        awslogs-region        = data.aws_region.current.name
+        awslogs-stream-prefix = "ecs"
+      }
+    }
+  }
+}
 
 resource "aws_ecs_cluster" "this" {
   name = "${var.cluster_name}-${var.environment}"
@@ -90,6 +226,18 @@ resource "aws_cloudwatch_log_group" "api" {
 
 resource "aws_cloudwatch_log_group" "worker" {
   name              = "/aws/ecs/atlas-worker-${var.environment}"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "api_adot" {
+  count             = var.enable_otel_sidecar ? 1 : 0
+  name              = "/aws/ecs/atlas-api-adot-${var.environment}"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "worker_adot" {
+  count             = var.enable_otel_sidecar ? 1 : 0
+  name              = "/aws/ecs/atlas-worker-adot-${var.environment}"
   retention_in_days = 14
 }
 
@@ -108,29 +256,12 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  container_definitions = jsonencode([
-    {
-      name         = "api"
-      image        = var.api_image
-      essential    = true
-      portMappings = [{ containerPort = 8000, protocol = "tcp" }]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.api.name
-          awslogs-region        = data.aws_region.current.name
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-      environment = [
-        { name = "DATABASE_SECRET_ARN", value = var.rds_secret_arn },
-        { name = "OPENSEARCH_ENDPOINT", value = var.opensearch_endpoint },
-        { name = "SQS_QUEUE_ARN", value = var.sqs_queue_arn },
-        { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
-        { name = "AWS_REGION", value = data.aws_region.current.name }
-      ]
-    }
-  ])
+  container_definitions = jsonencode(
+    concat(
+      [local.api_container],
+      var.enable_otel_sidecar ? [local.api_adot_container] : []
+    )
+  )
 }
 
 resource "aws_ecs_service" "api" {
@@ -166,27 +297,12 @@ resource "aws_ecs_task_definition" "worker" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  container_definitions = jsonencode([
-    {
-      name      = "worker"
-      image     = var.worker_image
-      essential = true
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.worker.name
-          awslogs-region        = data.aws_region.current.name
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-      environment = [
-        { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
-        { name = "SQS_QUEUE_ARN", value = var.sqs_queue_arn },
-        { name = "OPENSEARCH_ENDPOINT", value = var.opensearch_endpoint },
-        { name = "AWS_REGION", value = data.aws_region.current.name }
-      ]
-    }
-  ])
+  container_definitions = jsonencode(
+    concat(
+      [local.worker_container],
+      var.enable_otel_sidecar ? [local.worker_adot_container] : []
+    )
+  )
 }
 
 resource "aws_ecs_service" "worker" {
@@ -351,7 +467,11 @@ resource "aws_iam_role_policy" "task" {
         Action = ["logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = concat(
           ["${aws_cloudwatch_log_group.api.arn}:*", "${aws_cloudwatch_log_group.worker.arn}:*"],
-          var.enable_frontend ? ["${aws_cloudwatch_log_group.frontend[0].arn}:*"] : []
+          var.enable_frontend ? ["${aws_cloudwatch_log_group.frontend[0].arn}:*"] : [],
+          var.enable_otel_sidecar ? [
+            "${aws_cloudwatch_log_group.api_adot[0].arn}:*",
+            "${aws_cloudwatch_log_group.worker_adot[0].arn}:*"
+          ] : []
         )
       },
       {

@@ -67,6 +67,7 @@ module "ecs" {
   api_target_group_arn      = module.alb.api_target_group_arn
   frontend_target_group_arn = module.alb.frontend_target_group_arn
   enable_frontend           = true
+  enable_otel_sidecar       = true
 }
 
 module "oidc" {

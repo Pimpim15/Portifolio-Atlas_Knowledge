@@ -34,6 +34,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - OpenSearch hospedado em sub-redes privadas, com TLS obrigatório, logs em CloudWatch e criptografia em trânsito/em repouso.
 - Alarmes CloudWatch para saúde do OpenSearch (status, armazenamento, pressão JVM).
 - Frontend Vue servindo via ECS Fargate atrás do ALB, com autoscaling baseado em CPU.
+- Sidecar AWS Distro for OpenTelemetry nas tasks ECS (API/worker) exportando métricas e traces para a AWS.
 
 ### ⚠️ Pendências
 
@@ -41,7 +42,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 | --- | --- | --- |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Dashboards/alertas CloudWatch, enriquecimento de traces cross-service e publicação de screenshots/logs no README. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT multi-AZ, HTTPS, Secrets Manager, TLS + logs, alarmes). Pendências: sidecar ADOT, revisão fina de limites/custos. |
+| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT multi-AZ, HTTPS, Secrets Manager, TLS + logs, alarmes, ADOT sidecar). Pendências: revisão fina de limites/custos. |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existe, depende de variáveis/infra reais e etapas de approval. |
 | ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
 | ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
@@ -152,6 +153,10 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
   1. Ajuste `vpc_az_count` em `infra/terraform/envs/<env>/terraform.tfvars` conforme as AZs desejadas.
   2. Certifique-se de que a região possui zonas suficientes e que os CIDRs disponíveis comportam os novos subnets.
   3. Cada AZ cria seu próprio NAT Gateway e route table privados; monitore custos ao aumentar a contagem.
+- AWS Distro for OpenTelemetry no ECS:
+  1. O sidecar é habilitado definindo `enable_otel_sidecar = true` no módulo ECS (já ativo nos ambientes provisionados).
+  2. Ajuste `otel_collector_image` para _pin_ ou versões customizadas.
+  3. Containers principais exportam via OTLP gRPC apontando para `http://127.0.0.1:4317`; mantenha essa configuração ao extender serviços.
 - Integração ECS ↔ ALB:
   - API roda em Fargate com autoscaling (CPU target ≥ 60%).
   - Target group `atlas-<env>-api` recebe o tráfego HTTPS; paths definidos em `alb_frontend_path_patterns` podem ser roteados para workloads de frontend.
@@ -175,7 +180,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch maduras (DLQ, SSE, IGW, NAT, HTTPS, Secrets Manager, TLS + logs, alarmes). Pendências: parametrização multi-AZ. |
+| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch maduras (DLQ, SSE, IGW, NAT multi-AZ, HTTPS, Secrets Manager, TLS + logs, alarmes, ADOT sidecar). Pendências: otimizações de custo, rotação automática de segredos. |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existente, mas depende de variáveis/infra reais e etapas de approval. |
 | ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
 | ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
@@ -183,7 +188,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 ## Backlog priorizado para Product Ready
 
 1. **Completar o pipeline de documentos**: automatizar alertas e dashboards para reindex, enriquecer replays OpenSearch e expor métricas chave na UI/observabilidade.
-2. **Madurar a infraestrutura Terraform**: Ajustar sidecar ADOT, revisar limites/custos das instâncias, automatizar rotação de segredos, enriquecer validações de segurança.
+2. **Madurar a infraestrutura Terraform**: Revisar limites/custos das instâncias, automatizar rotação de segredos, enriquecer validações de segurança.
 3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
 4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.
 5. **Benchmarks e hardening final**: cenários Locust/wrk documentados, ajustes de performance, checklist de segurança concluído e testes E2E do frontend.
