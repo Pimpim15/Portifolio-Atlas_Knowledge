@@ -128,10 +128,18 @@ output "queue_url" {
   value = aws_sqs_queue.docs.id
 }
 
+output "queue_name" {
+  value = aws_sqs_queue.docs.name
+}
+
 output "dlq_arn" {
   value = aws_sqs_queue.docs_dlq.arn
 }
 
 output "dlq_url" {
   value = aws_sqs_queue.docs_dlq.id
+}
+
+output "dlq_name" {
+  value = aws_sqs_queue.docs_dlq.name
 }

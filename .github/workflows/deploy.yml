@@ -10,45 +10,157 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install Poetry
         run: pip install poetry==1.8.3
+
       - name: Install dependencies
         run: poetry install
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Login to ECR
+        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Definir tag das imagens
+        id: build-vars
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "IMAGE_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "IMAGE_TAG=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.build-vars.outputs.IMAGE_TAG }}
         run: |
           IMAGE=atlas-api
           docker build -t $IMAGE:latest -f services/api/Dockerfile .
-          docker tag $IMAGE:latest ${{ env.ECR_REGISTRY }}/$IMAGE:${{ github.sha }}
-          docker push ${{ env.ECR_REGISTRY }}/$IMAGE:${{ github.sha }}
+          docker tag $IMAGE:latest $ECR_REGISTRY/$IMAGE:$IMAGE_TAG
+          docker tag $IMAGE:latest $ECR_REGISTRY/$IMAGE:latest
+          docker push $ECR_REGISTRY/$IMAGE:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$IMAGE:latest
+
       - name: Build and push Worker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.build-vars.outputs.IMAGE_TAG }}
         run: |
           IMAGE=atlas-worker
           docker build -t $IMAGE:latest -f services/worker/Dockerfile .
-          docker tag $IMAGE:latest ${{ env.ECR_REGISTRY }}/$IMAGE:${{ github.sha }}
-          docker push ${{ env.ECR_REGISTRY }}/$IMAGE:${{ github.sha }}
+          docker tag $IMAGE:latest $ECR_REGISTRY/$IMAGE:$IMAGE_TAG
+          docker tag $IMAGE:latest $ECR_REGISTRY/$IMAGE:latest
+          docker push $ECR_REGISTRY/$IMAGE:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$IMAGE:latest
+
       - name: Build and push Frontend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.build-vars.outputs.IMAGE_TAG }}
         run: |
           IMAGE=atlas-frontend
           docker build -t $IMAGE:latest -f services/frontend/Dockerfile services/frontend
-          docker tag $IMAGE:latest ${{ env.ECR_REGISTRY }}/$IMAGE:${{ github.sha }}
-          docker push ${{ env.ECR_REGISTRY }}/$IMAGE:${{ github.sha }}
+          docker tag $IMAGE:latest $ECR_REGISTRY/$IMAGE:$IMAGE_TAG
+          docker tag $IMAGE:latest $ECR_REGISTRY/$IMAGE:latest
+          docker push $ECR_REGISTRY/$IMAGE:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$IMAGE:latest
+
+  terraform-plan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Terraform init
         working-directory: infra/terraform
-        run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=atlas/dev/terraform.tfstate" -backend-config="region=us-east-1"
+        run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=atlas/dev/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform fmt (check)
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform plan (dev)
+        working-directory: infra/terraform
+        run: |
+          mkdir -p plan
+          terraform plan -var-file=envs/dev/terraform.tfvars -out plan/dev.tfplan
+
+      - name: Export plan
+        working-directory: infra/terraform
+        run: terraform show -no-color plan/dev.tfplan > plan/dev.txt
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-dev
+          path: infra/terraform/plan
+
+  terraform-apply-dev:
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-dev
+          path: infra/terraform/plan
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=atlas/dev/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}"
+
       - name: Terraform apply (dev)
         working-directory: infra/terraform
-        run: terraform apply -auto-approve -var-file=envs/dev/terraform.tfvars
-      - name: ECS deploy
-        run: aws ecs update-service --cluster atlas-knowledge-dev --service atlas-api-dev --force-new-deployment
+        run: terraform apply plan/dev.tfplan
+
+      - name: Atualizar serviços ECS
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          aws ecs update-service --cluster atlas-knowledge-dev --service atlas-api-dev --force-new-deployment
+          aws ecs update-service --cluster atlas-knowledge-dev --service atlas-worker-dev --force-new-deployment
+          aws ecs update-service --cluster atlas-knowledge-dev --service atlas-frontend-dev --force-new-deployment

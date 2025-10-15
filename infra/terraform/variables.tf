@@ -37,3 +37,15 @@ variable "alb_frontend_path_patterns" {
   type        = list(string)
   default     = ["/app/*"]
 }
+
+variable "cloudwatch_alarm_actions" {
+  description = "ARNs acionados quando alarmes CloudWatch disparam"
+  type        = list(string)
+  default     = []
+}
+
+variable "cloudwatch_ok_actions" {
+  description = "ARNs acionados quando alarmes CloudWatch retornam ao estado OK"
+  type        = list(string)
+  default     = []
+}

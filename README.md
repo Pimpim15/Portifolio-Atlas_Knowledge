@@ -34,16 +34,19 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - RDS PostgreSQL com subnet group privado, secret gerenciado no Secrets Manager e senha randômica gerada via Terraform.
 - OpenSearch hospedado em sub-redes privadas, com TLS obrigatório, logs em CloudWatch e criptografia em trânsito/em repouso.
 - Alarmes CloudWatch para saúde do OpenSearch (status, armazenamento, pressão JVM).
+- Dashboard operacional no CloudWatch (`atlas-<env>-operations`) com métricas de SQS, ECS, RDS e OpenSearch.
+- Alarmes adicionais no CloudWatch para CPU/memória do ECS (API, worker e frontend).
 - Frontend Vue servindo via ECS Fargate atrás do ALB, com autoscaling baseado em CPU.
 - Sidecar AWS Distro for OpenTelemetry nas tasks ECS (API/worker) exportando métricas e traces para a AWS.
+- Secrets Manager com rotação opcional do segredo do RDS (quando um Lambda de rotação é fornecido).
 
 ### ⚠️ Pendências
 
 | Status | Entrega | Observações |
 | --- | --- | --- |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
-| 🚧 | Observabilidade ponta a ponta | Dashboards/alertas CloudWatch, enriquecimento de traces cross-service e publicação de screenshots/logs no README. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT multi-AZ, HTTPS, Secrets Manager, TLS + logs, alarmes, ADOT sidecar). Pendências: revisão fina de limites/custos. |
+| 🚧 | Observabilidade ponta a ponta | Dashboard CloudWatch + alarmes entregues; falta enriquecer traces cross-service e publicar screenshots/logs. |
+| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT multi-AZ com toggle de custo, HTTPS, Secrets Manager, TLS + logs, alarmes, ADOT sidecar). Pendências: automatizar rotação via Lambda gerenciado e revisar limites/custos avançados. |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existe, depende de variáveis/infra reais e etapas de approval. |
 | ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
 | ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
