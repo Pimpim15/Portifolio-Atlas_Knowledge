@@ -9,6 +9,12 @@ variable "environment" {
   type        = string
 }
 
+variable "vpc_az_count" {
+  description = "Quantidade de zonas de disponibilidade usadas pela VPC"
+  type        = number
+  default     = 2
+}
+
 variable "alb_certificate_arn" {
   description = "ARN do certificado ACM utilizado pelo ALB"
   type        = string

@@ -17,8 +17,9 @@ provider "aws" {
 }
 
 module "vpc" {
-  source      = "./modules/vpc"
-  environment = var.environment
+  source                  = "./modules/vpc"
+  environment             = var.environment
+  availability_zone_count = var.vpc_az_count
 }
 
 module "rds" {

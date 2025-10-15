@@ -8,6 +8,12 @@ variable "cidr_block" {
   default     = "10.0.0.0/16"
 }
 
+variable "availability_zone_count" {
+  type        = number
+  description = "Quantidade de AZs a utilizar"
+  default     = 2
+}
+
 variable "public_subnet_newbits" {
   type        = number
   description = "Quantidade de bits adicionados ao CIDR para subnets públicas"
@@ -31,10 +37,11 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  azs       = slice(data.aws_availability_zones.available.names, 0, 2)
-  base_tags = merge({ Environment = var.environment, Service = "atlas-knowledge", ManagedBy = "terraform" }, var.tags)
+  requested_azs = max(1, min(var.availability_zone_count, length(data.aws_availability_zones.available.names)))
+  azs           = slice(data.aws_availability_zones.available.names, 0, local.requested_azs)
+  base_tags     = merge({ Environment = var.environment, Service = "atlas-knowledge", ManagedBy = "terraform" }, var.tags)
   public_map = {
-    for idx, az in local.azs : idx => {
+    for idx, az in local.azs : tostring(idx) => {
       az     = az
       cidr   = cidrsubnet(var.cidr_block, var.public_subnet_newbits, idx)
       name   = "atlas-${var.environment}-public-${idx}"
@@ -42,7 +49,7 @@ locals {
     }
   }
   private_map = {
-    for idx, az in local.azs : idx => {
+    for idx, az in local.azs : tostring(idx) => {
       az   = az
       cidr = cidrsubnet(var.cidr_block, var.private_subnet_newbits, idx + 8)
       name = "atlas-${var.environment}-private-${idx}"
@@ -92,15 +99,17 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_eip" "nat" {
-  domain = "vpc"
-  tags   = merge(local.base_tags, { Name = "atlas-${var.environment}-nat-eip" })
+  for_each = local.public_map
+  domain   = "vpc"
+  tags     = merge(local.base_tags, { Name = "atlas-${var.environment}-nat-eip-${each.key}" })
 }
 
 resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = values(aws_subnet.public)[0].id
+  for_each      = local.public_map
+  allocation_id = aws_eip.nat[each.key].id
+  subnet_id     = aws_subnet.public[each.key].id
   depends_on    = [aws_internet_gateway.igw]
-  tags          = merge(local.base_tags, { Name = "atlas-${var.environment}-nat" })
+  tags          = merge(local.base_tags, { Name = "atlas-${var.environment}-nat-${each.key}" })
 }
 
 resource "aws_route_table" "public" {
@@ -121,20 +130,25 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.this.id
-  tags   = merge(local.base_tags, { Name = "atlas-${var.environment}-private-rt" })
+  for_each = aws_subnet.private
+  vpc_id   = aws_vpc.this.id
+  tags = merge(
+    local.base_tags,
+    { Name = "atlas-${var.environment}-private-rt-${each.key}" }
+  )
 }
 
 resource "aws_route" "private_nat" {
-  route_table_id         = aws_route_table.private.id
+  for_each               = aws_subnet.private
+  route_table_id         = aws_route_table.private[each.key].id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat.id
+  nat_gateway_id         = aws_nat_gateway.nat[each.key].id
 }
 
 resource "aws_route_table_association" "private" {
   for_each       = aws_subnet.private
   subnet_id      = each.value.id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[each.key].id
 }
 
 output "vpc_id" {
@@ -153,14 +167,22 @@ output "public_route_table_id" {
   value = aws_route_table.public.id
 }
 
-output "private_route_table_id" {
-  value = aws_route_table.private.id
+output "private_route_table_ids" {
+  value = [for rt in aws_route_table.private : rt.id]
+}
+
+output "nat_gateway_ids" {
+  value = [for nat in aws_nat_gateway.nat : nat.id]
 }
 
 output "nat_gateway_id" {
-  value = aws_nat_gateway.nat.id
+  value = try(aws_nat_gateway.nat["0"].id, null)
 }
 
 output "cidr_block" {
   value = var.cidr_block
+}
+
+output "availability_zones" {
+  value = local.azs
 }

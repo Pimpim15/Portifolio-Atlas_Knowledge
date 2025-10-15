@@ -28,7 +28,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
 - Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros, painel administrativo no frontend e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 - Módulo Terraform de SQS com DLQ, SSE e alarmes CloudWatch para o pipeline de documentos.
-- Módulo Terraform de VPC com IGW, NAT Gateway, sub-redes públicas/privadas e rotas gerenciadas.
+- Módulo Terraform de VPC com IGW, NAT Gateway, sub-redes públicas/privadas multi-AZ configuráveis e rotas por zona.
 - Application Load Balancer com HTTPS (ACM), SG dedicado, redirecionamento HTTP→HTTPS e roteamento para API/Frontend.
 - RDS PostgreSQL com subnet group privado, secret gerenciado no Secrets Manager e senha randômica gerada via Terraform.
 - OpenSearch hospedado em sub-redes privadas, com TLS obrigatório, logs em CloudWatch e criptografia em trânsito/em repouso.
@@ -41,7 +41,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 | --- | --- | --- |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
 | 🚧 | Observabilidade ponta a ponta | Dashboards/alertas CloudWatch, enriquecimento de traces cross-service e publicação de screenshots/logs no README. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT, HTTPS, Secrets Manager, TLS + logs, alarmes). Pendências: parametrização multi-AZ avançada. |
+| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT multi-AZ, HTTPS, Secrets Manager, TLS + logs, alarmes). Pendências: sidecar ADOT, revisão fina de limites/custos. |
 | 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existe, depende de variáveis/infra reais e etapas de approval. |
 | ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
 | ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
@@ -148,6 +148,10 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
   1. Gere/import um certificado ACM válido (wildcard recomendado) na região configurada (`alb_certificate_arn`).
   2. Atualize `infra/terraform/envs/<env>/terraform.tfvars` com o ARN correto.
   3. Opcional: restrinja o acesso público ajustando `alb_allowed_cidrs`.
+- Multi-AZ na VPC:
+  1. Ajuste `vpc_az_count` em `infra/terraform/envs/<env>/terraform.tfvars` conforme as AZs desejadas.
+  2. Certifique-se de que a região possui zonas suficientes e que os CIDRs disponíveis comportam os novos subnets.
+  3. Cada AZ cria seu próprio NAT Gateway e route table privados; monitore custos ao aumentar a contagem.
 - Integração ECS ↔ ALB:
   - API roda em Fargate com autoscaling (CPU target ≥ 60%).
   - Target group `atlas-<env>-api` recebe o tráfego HTTPS; paths definidos em `alb_frontend_path_patterns` podem ser roteados para workloads de frontend.
@@ -179,7 +183,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 ## Backlog priorizado para Product Ready
 
 1. **Completar o pipeline de documentos**: automatizar alertas e dashboards para reindex, enriquecer replays OpenSearch e expor métricas chave na UI/observabilidade.
-2. **Madurar a infraestrutura Terraform**: VPC/rotas/IGW, ALB HTTPS, Secrets Manager, autoscaling ECS, DLQ SQS, sidecar ADOT e variáveis por ambiente.
+2. **Madurar a infraestrutura Terraform**: Ajustar sidecar ADOT, revisar limites/custos das instâncias, automatizar rotação de segredos, enriquecer validações de segurança.
 3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
 4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.
 5. **Benchmarks e hardening final**: cenários Locust/wrk documentados, ajustes de performance, checklist de segurança concluído e testes E2E do frontend.
