@@ -15,6 +15,12 @@ variable "vpc_az_count" {
   default     = 2
 }
 
+variable "vpc_nat_gateway_per_az" {
+  description = "Define se a VPC cria um NAT Gateway por AZ (true) ou apenas um compartilhado (false)"
+  type        = bool
+  default     = true
+}
+
 variable "alb_certificate_arn" {
   description = "ARN do certificado ACM utilizado pelo ALB"
   type        = string

@@ -29,6 +29,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros, painel administrativo no frontend e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 - Módulo Terraform de SQS com DLQ, SSE e alarmes CloudWatch para o pipeline de documentos.
 - Módulo Terraform de VPC com IGW, NAT Gateway, sub-redes públicas/privadas multi-AZ configuráveis e rotas por zona.
+  - NAT Gateway por AZ opcional: ambientes não críticos podem usar uma única saída compartilhada para reduzir custos.
 - Application Load Balancer com HTTPS (ACM), SG dedicado, redirecionamento HTTP→HTTPS e roteamento para API/Frontend.
 - RDS PostgreSQL com subnet group privado, secret gerenciado no Secrets Manager e senha randômica gerada via Terraform.
 - OpenSearch hospedado em sub-redes privadas, com TLS obrigatório, logs em CloudWatch e criptografia em trânsito/em repouso.
@@ -153,6 +154,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
   1. Ajuste `vpc_az_count` em `infra/terraform/envs/<env>/terraform.tfvars` conforme as AZs desejadas.
   2. Certifique-se de que a região possui zonas suficientes e que os CIDRs disponíveis comportam os novos subnets.
   3. Cada AZ cria seu próprio NAT Gateway e route table privados; monitore custos ao aumentar a contagem.
+  4. Use `vpc_nat_gateway_per_az = false` para ambientes onde um único NAT Gateway é suficiente (ex.: dev/stage).
 - AWS Distro for OpenTelemetry no ECS:
   1. O sidecar é habilitado definindo `enable_otel_sidecar = true` no módulo ECS (já ativo nos ambientes provisionados).
   2. Ajuste `otel_collector_image` para _pin_ ou versões customizadas.

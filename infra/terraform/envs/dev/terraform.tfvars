@@ -1,4 +1,5 @@
-environment         = "dev"
-aws_region          = "us-east-1"
-alb_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/example-dev"
-vpc_az_count        = 2
+environment            = "dev"
+aws_region             = "us-east-1"
+alb_certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/example-dev"
+vpc_az_count           = 2
+vpc_nat_gateway_per_az = false

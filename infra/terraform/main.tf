@@ -20,6 +20,7 @@ module "vpc" {
   source                  = "./modules/vpc"
   environment             = var.environment
   availability_zone_count = var.vpc_az_count
+  nat_gateway_per_az      = var.vpc_nat_gateway_per_az
 }
 
 module "rds" {

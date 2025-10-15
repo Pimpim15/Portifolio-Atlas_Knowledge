@@ -14,6 +14,12 @@ variable "availability_zone_count" {
   default     = 2
 }
 
+variable "nat_gateway_per_az" {
+  type        = bool
+  description = "Provisiona um NAT Gateway por AZ (true) ou reutiliza o primeiro NAT para todas as privadas (false)"
+  default     = true
+}
+
 variable "public_subnet_newbits" {
   type        = number
   description = "Quantidade de bits adicionados ao CIDR para subnets públicas"
@@ -54,6 +60,16 @@ locals {
       cidr = cidrsubnet(var.cidr_block, var.private_subnet_newbits, idx + 8)
       name = "atlas-${var.environment}-private-${idx}"
     }
+  }
+  primary_public_key = element(keys(local.public_map), 0)
+  nat_gateway_map = var.nat_gateway_per_az ? local.public_map : {
+    for key, value in local.public_map :
+    key => value if key == local.primary_public_key
+  }
+  nat_gateway_keys = keys(local.nat_gateway_map)
+  private_nat_assignment = {
+    for key, value in local.private_map :
+    key => (var.nat_gateway_per_az && contains(local.nat_gateway_keys, key)) ? key : local.primary_public_key
   }
 }
 
@@ -99,13 +115,13 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_eip" "nat" {
-  for_each = local.public_map
+  for_each = local.nat_gateway_map
   domain   = "vpc"
   tags     = merge(local.base_tags, { Name = "atlas-${var.environment}-nat-eip-${each.key}" })
 }
 
 resource "aws_nat_gateway" "nat" {
-  for_each      = local.public_map
+  for_each      = local.nat_gateway_map
   allocation_id = aws_eip.nat[each.key].id
   subnet_id     = aws_subnet.public[each.key].id
   depends_on    = [aws_internet_gateway.igw]
@@ -142,7 +158,7 @@ resource "aws_route" "private_nat" {
   for_each               = aws_subnet.private
   route_table_id         = aws_route_table.private[each.key].id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat[each.key].id
+  nat_gateway_id         = aws_nat_gateway.nat[local.private_nat_assignment[each.key]].id
 }
 
 resource "aws_route_table_association" "private" {
