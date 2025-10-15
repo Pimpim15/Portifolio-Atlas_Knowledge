@@ -27,24 +27,6 @@ variable "multi_az" {
   description = "Ativa instância Multi-AZ"
 }
 
-variable "enable_secret_rotation" {
-  type        = bool
-  default     = false
-  description = "Habilita rotação automática do segredo no Secrets Manager"
-}
-
-variable "secret_rotation_lambda_arn" {
-  type        = string
-  default     = null
-  description = "ARN da função Lambda responsável pela rotação do segredo"
-}
-
-variable "secret_rotation_days" {
-  type        = number
-  default     = 30
-  description = "Intervalo (dias) para rotacionar automaticamente o segredo"
-}
-
 locals {
   base_tags = {
     Environment = var.environment
@@ -126,23 +108,6 @@ resource "aws_secretsmanager_secret_version" "db" {
     dbname   = var.db_name
   })
   depends_on = [aws_db_instance.this]
-}
-
-resource "aws_secretsmanager_secret_rotation" "db" {
-  count               = var.enable_secret_rotation ? 1 : 0
-  secret_id           = aws_secretsmanager_secret.db.id
-  rotation_lambda_arn = var.secret_rotation_lambda_arn
-
-  rotation_rules {
-    automatically_after_days = var.secret_rotation_days
-  }
-
-  lifecycle {
-    precondition {
-      condition     = var.secret_rotation_lambda_arn != null && var.secret_rotation_lambda_arn != ""
-      error_message = "secret_rotation_lambda_arn deve ser informado quando enable_secret_rotation estiver habilitado."
-    }
-  }
 }
 
 output "secret_arn" {

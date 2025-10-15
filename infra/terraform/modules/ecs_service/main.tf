@@ -562,3 +562,15 @@ output "frontend_service_name" {
 output "frontend_security_group_id" {
   value = try(aws_security_group.frontend[0].id, null)
 }
+
+output "api_log_group_name" {
+  value = aws_cloudwatch_log_group.api.name
+}
+
+output "worker_log_group_name" {
+  value = aws_cloudwatch_log_group.worker.name
+}
+
+output "frontend_log_group_name" {
+  value = try(aws_cloudwatch_log_group.frontend[0].name, null)
+}

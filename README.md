@@ -36,20 +36,21 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Alarmes CloudWatch para saúde do OpenSearch (status, armazenamento, pressão JVM).
 - Dashboard operacional no CloudWatch (`atlas-<env>-operations`) com métricas de SQS, ECS, RDS e OpenSearch.
 - Alarmes adicionais no CloudWatch para CPU/memória do ECS (API, worker e frontend).
+- Propagação de trace W3C nas mensagens SQS e spans filhos no worker para correlação ponta a ponta.
+- Consultas CloudWatch Logs Insights versionadas (falhas do worker, erros 5xx e frontend) criadas via Terraform.
 - Frontend Vue servindo via ECS Fargate atrás do ALB, com autoscaling baseado em CPU.
 - Sidecar AWS Distro for OpenTelemetry nas tasks ECS (API/worker) exportando métricas e traces para a AWS.
-- Secrets Manager com rotação opcional do segredo do RDS (quando um Lambda de rotação é fornecido).
+- Secrets Manager com rotação automática do segredo RDS via Lambda gerenciada e parametrizada pelo Terraform.
 
 ### ⚠️ Pendências
 
 | Status | Entrega | Observações |
 | --- | --- | --- |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
-| 🚧 | Observabilidade ponta a ponta | Dashboard CloudWatch + alarmes entregues; falta enriquecer traces cross-service e publicar screenshots/logs. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch prontos (DLQ, SSE, IGW, NAT multi-AZ com toggle de custo, HTTPS, Secrets Manager, TLS + logs, alarmes, ADOT sidecar). Pendências: automatizar rotação via Lambda gerenciado e revisar limites/custos avançados. |
-| 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existe, depende de variáveis/infra reais e etapas de approval. |
-| ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
-| ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
+| ✅ | Observabilidade ponta a ponta | Tracing cross-service ativo (SQS → worker), dashboard + alarmes CloudWatch, queries Log Insights versionadas e evidências publicadas em `docs/observability.md`. |
+| ✅ | Terraform com recursos reais | Infra estratificada com rotação automática do segredo RDS via Lambda gerenciada, otimizações de custo e observabilidade nativa. |
+| ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipeline com planos/applies para dev/stage/prod, ambientes protegidos e redeploy ECS por ambiente. |
+| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless (`bench/run_headless.py`) e relatório de exemplo incluídos; falta executar cargas oficiais e anexar resultados consolidados. |
 
 ## Arquitetura
 
@@ -133,7 +134,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
 ## Pipelines
 
 - `pr.yml`: lint (ruff), type-check (mypy), testes (pytest + coverage ≥ 85%), CodeQL, Trivy.
-- `deploy.yml`: build/push imagens para ECR, Terraform plan/apply, ECS deploy (dev/prod).
+- `deploy.yml`: build/push imagens para ECR e executa Terraform plan/apply com approvals por ambiente (dev, stage, prod) antes de forçar novo deploy das services ECS.
 
 ## Observabilidade
 
@@ -145,6 +146,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
   1. Em Grafana, acesse **Dashboards > New > Import**.
   2. Cole o conteúdo do JSON ou selecione o arquivo local.
   3. Aponte para o datasource Prometheus usado no ambiente (ajuste o UID `PROM_DS` se necessário).
+- Guia de observabilidade com screenshots e comandos: [`docs/observability.md`](docs/observability.md).
 - Alertas Prometheus (`infra/otel/reindex-alert-rules.yaml`):
   1. Referencie o arquivo na configuração do alertmanager/prometheus (`rule_files`).
   2. Ajuste os rótulos `service`/`severity` conforme a taxonomia local.
@@ -184,19 +186,19 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento, reindex, idempotência e rate-limit entregues. |
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
 | 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
-| 🚧 | Observabilidade ponta a ponta | Logs/metrics prontos; spans do worker, dashboards e alarmes a implementar. |
-| 🚧 | Terraform com recursos reais | SQS, VPC, RDS, ALB e OpenSearch maduras (DLQ, SSE, IGW, NAT multi-AZ, HTTPS, Secrets Manager, TLS + logs, alarmes, ADOT sidecar). Pendências: otimizações de custo, rotação automática de segredos. |
-| 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existente, mas depende de variáveis/infra reais e etapas de approval. |
-| ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
-| ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
+| ✅ | Observabilidade ponta a ponta | Tracing, dashboards, alarmes e queries Log Insights versionadas; screenshots adicionadas à documentação. |
+| ✅ | Terraform com recursos reais | Infra concluída com rotação automática de segredos, controles de custo e outputs para observabilidade. |
+| ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipelines multiambiente com approvals e redeploy ECS automatizado. |
+| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless e relatório de exemplo prontos; aguarda execução oficial e publicação. |
+| ✅ | Screenshots/logs/dashboards no README | Evidências capturadas e linkadas em `docs/observability.md`. |
 
 ## Backlog priorizado para Product Ready
 
-1. **Completar o pipeline de documentos**: automatizar alertas e dashboards para reindex, enriquecer replays OpenSearch e expor métricas chave na UI/observabilidade.
-2. **Madurar a infraestrutura Terraform**: Revisar limites/custos das instâncias, automatizar rotação de segredos, enriquecer validações de segurança.
-3. **Evoluir o CI/CD**: images versionadas em ECR, Terraform plan/apply com aprovações, deploy por ambiente e parametrização de segredos.
-4. **Observabilidade avançada**: dashboards e alertas CloudWatch, correlação logs→traces, métricas proativas e publicação de screenshots no README.
-5. **Benchmarks e hardening final**: cenários Locust/wrk documentados, ajustes de performance, checklist de segurança concluído e testes E2E do frontend.
+1. **Consolidar benchmarks oficiais**: executar cargas em stage/prod, anexar CSVs e análise comparativa ao repositório.
+2. **UI e dashboards analíticos**: evoluir o frontend com painéis avançados e cobrir os fluxos com testes E2E.
+3. **Guardrails de custos e capacidade**: configurar AWS Budgets, storage autoscaling e alarmes de limites críticos.
+4. **Smoke tests automatizados**: acoplar `bench/run_headless.py` ao pipeline para validar releases antes do deploy.
+5. **Hardening de segurança**: revisar checklist, aplicar pen tests leves e documentar respostas a incidentes.
 
 ## Créditos
 

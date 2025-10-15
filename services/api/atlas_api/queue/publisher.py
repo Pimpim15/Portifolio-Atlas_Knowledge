@@ -12,9 +12,30 @@ from ..observability.metrics import REINDEX_DOCUMENT_ENQUEUED
 from ..search.serializers import serialize_document
 from .sqs import ensure_queue_exists, get_sqs_client
 
+try:  # pragma: no cover - optional instrumentation
+    from opentelemetry.trace.propagation.tracecontext import (  # type: ignore[import]
+        TraceContextTextMapPropagator,
+    )
+except ImportError:  # pragma: no cover - optional instrumentation
+    TraceContextTextMapPropagator = None
+
 logger = get_logger(component="api", module="queue.publisher")
 
 DOCUMENT_EVENT_SOURCE = "atlas.documents"
+
+
+def _build_trace_message_attributes() -> dict[str, dict[str, str]]:
+    if TraceContextTextMapPropagator is None:
+        return {}
+
+    carrier: dict[str, str] = {}
+    TraceContextTextMapPropagator().inject(carrier)
+    attributes: dict[str, dict[str, str]] = {}
+    for key, value in carrier.items():
+        if not value:
+            continue
+        attributes[key] = {"DataType": "String", "StringValue": value}
+    return attributes
 
 
 def _send_message(payload: dict[str, Any]) -> None:
@@ -25,8 +46,15 @@ def _send_message(payload: dict[str, Any]) -> None:
 
     client = get_sqs_client()
     ensure_queue_exists(settings.sqs_queue_url)
+    message_attributes = _build_trace_message_attributes()
     try:
-        client.send_message(QueueUrl=settings.sqs_queue_url, MessageBody=json.dumps(payload))
+        params = {
+            "QueueUrl": settings.sqs_queue_url,
+            "MessageBody": json.dumps(payload),
+        }
+        if message_attributes:
+            params["MessageAttributes"] = message_attributes
+        client.send_message(**params)
     except Exception as exc:  # pragma: no cover - IO failure
         logger.exception("sqs_send_failed", action=payload.get("action"), error=str(exc))
 

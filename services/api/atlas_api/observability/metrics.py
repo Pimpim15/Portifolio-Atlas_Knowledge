@@ -48,3 +48,7 @@ WORKER_PROCESSING_ERRORS = Counter(
 	"Total de erros ao processar mensagens pelo worker",
 	["action"],
 )
+WORKER_MESSAGE_AGE_SECONDS = Histogram(
+	"atlas_worker_message_age_seconds",
+	"Tempo em segundos entre o envio e o processamento de mensagens no worker",
+)

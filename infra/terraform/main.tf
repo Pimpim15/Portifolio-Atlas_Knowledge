@@ -31,6 +31,17 @@ module "rds" {
   vpc_cidr_block     = module.vpc.cidr_block
 }
 
+module "rds_rotation_lambda" {
+  count                  = var.enable_rds_secret_rotation ? 1 : 0
+  source                 = "./modules/rds_secret_rotation_lambda"
+  environment            = var.environment
+  vpc_id                 = module.vpc.vpc_id
+  subnet_ids             = module.vpc.private_subnet_ids
+  secret_arn             = module.rds.secret_arn
+  db_instance_identifier = module.rds.instance_identifier
+  password_length        = var.rds_secret_rotation_password_length
+}
+
 module "opensearch" {
   source             = "./modules/opensearch"
   environment        = var.environment
@@ -74,4 +85,14 @@ module "ecs" {
 module "oidc" {
   source      = "./modules/iam_github_oidc"
   environment = var.environment
+}
+
+resource "aws_secretsmanager_secret_rotation" "rds" {
+  count               = var.enable_rds_secret_rotation ? 1 : 0
+  secret_id           = module.rds.secret_arn
+  rotation_lambda_arn = module.rds_rotation_lambda[0].lambda_arn
+
+  rotation_rules {
+    automatically_after_days = var.rds_secret_rotation_days
+  }
 }

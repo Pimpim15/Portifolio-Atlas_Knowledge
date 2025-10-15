@@ -49,3 +49,21 @@ variable "cloudwatch_ok_actions" {
   type        = list(string)
   default     = []
 }
+
+variable "enable_rds_secret_rotation" {
+  description = "Ativa a rotação automática do segredo RDS via Lambda gerenciada"
+  type        = bool
+  default     = false
+}
+
+variable "rds_secret_rotation_days" {
+  description = "Intervalo (dias) entre rotações automáticas do segredo"
+  type        = number
+  default     = 30
+}
+
+variable "rds_secret_rotation_password_length" {
+  description = "Comprimento das senhas geradas pelo processo de rotação"
+  type        = number
+  default     = 30
+}

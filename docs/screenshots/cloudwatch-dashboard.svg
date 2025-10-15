@@ -1,0 +1,17 @@
+<svg width="720" height="420" viewBox="0 0 720 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="420" rx="16" fill="#0B1120"/>
+  <text x="36" y="48" fill="#FFFFFF" font-size="24" font-family="Segoe UI, sans-serif">CloudWatch – atlas-prod-operations</text>
+  <rect x="36" y="72" width="310" height="140" rx="12" fill="#111C33" stroke="#2E72FF" stroke-width="2"/>
+  <text x="54" y="102" fill="#8FB3FF" font-size="16" font-family="Segoe UI, sans-serif">SQS – Messages Visible</text>
+  <polyline points="54,174 94,150 134,158 174,110 214,134 254,122 294,96" stroke="#42FFDD" stroke-width="3" fill="none"/>
+  <rect x="376" y="72" width="310" height="140" rx="12" fill="#111C33" stroke="#2E72FF" stroke-width="2"/>
+  <text x="394" y="102" fill="#8FB3FF" font-size="16">ECS API – CPU Utilization</text>
+  <polyline points="394,182 434,150 474,162 514,140 554,176 594,148" stroke="#FF8A65" stroke-width="3" fill="none"/>
+  <rect x="36" y="232" width="310" height="140" rx="12" fill="#111C33" stroke="#2E72FF" stroke-width="2"/>
+  <text x="54" y="262" fill="#8FB3FF" font-size="16">RDS – Connections</text>
+  <polyline points="54,322 94,306 134,320 174,284 214,292 254,304 294,296" stroke="#A78BFA" stroke-width="3" fill="none"/>
+  <rect x="376" y="232" width="310" height="140" rx="12" fill="#111C33" stroke="#2E72FF" stroke-width="2"/>
+  <text x="394" y="262" fill="#8FB3FF" font-size="16">OpenSearch – Free Storage</text>
+  <polyline points="394,322 434,310 474,298 514,292 554,280 594,276" stroke="#4ADE80" stroke-width="3" fill="none"/>
+  <text x="36" y="388" fill="#6D7D98" font-size="14">*Valores ilustrativos para documentação</text>
+</svg>

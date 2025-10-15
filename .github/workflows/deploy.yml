@@ -164,3 +164,175 @@ jobs:
           aws ecs update-service --cluster atlas-knowledge-dev --service atlas-api-dev --force-new-deployment
           aws ecs update-service --cluster atlas-knowledge-dev --service atlas-worker-dev --force-new-deployment
           aws ecs update-service --cluster atlas-knowledge-dev --service atlas-frontend-dev --force-new-deployment
+
+  terraform-plan-stage:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=atlas/stage/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform fmt (check)
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform plan (stage)
+        working-directory: infra/terraform
+        run: |
+          mkdir -p plan
+          terraform plan -var-file=envs/stage/terraform.tfvars -out plan/stage.tfplan
+
+      - name: Export plan
+        working-directory: infra/terraform
+        run: terraform show -no-color plan/stage.tfplan > plan/stage.txt
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-stage
+          path: infra/terraform/plan
+
+  terraform-apply-stage:
+    needs: terraform-plan-stage
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: stage
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-stage
+          path: infra/terraform/plan
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=atlas/stage/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform apply (stage)
+        working-directory: infra/terraform
+        run: terraform apply plan/stage.tfplan
+
+      - name: Atualizar serviços ECS (stage)
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          aws ecs update-service --cluster atlas-knowledge-stage --service atlas-api-stage --force-new-deployment
+          aws ecs update-service --cluster atlas-knowledge-stage --service atlas-worker-stage --force-new-deployment
+          aws ecs update-service --cluster atlas-knowledge-stage --service atlas-frontend-stage --force-new-deployment
+
+  terraform-plan-prod:
+    needs: build-and-push
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=atlas/prod/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform fmt (check)
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform plan (prod)
+        working-directory: infra/terraform
+        run: |
+          mkdir -p plan
+          terraform plan -var-file=envs/prod/terraform.tfvars -out plan/prod.tfplan
+
+      - name: Export plan
+        working-directory: infra/terraform
+        run: terraform show -no-color plan/prod.tfplan > plan/prod.txt
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-prod
+          path: infra/terraform/plan
+
+  terraform-apply-prod:
+    needs: terraform-plan-prod
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-prod
+          path: infra/terraform/plan
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=atlas/prod/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform apply (prod)
+        working-directory: infra/terraform
+        run: terraform apply plan/prod.tfplan
+
+      - name: Atualizar serviços ECS (prod)
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          aws ecs update-service --cluster atlas-knowledge-prod --service atlas-api-prod --force-new-deployment
+          aws ecs update-service --cluster atlas-knowledge-prod --service atlas-worker-prod --force-new-deployment
+          aws ecs update-service --cluster atlas-knowledge-prod --service atlas-frontend-prod --force-new-deployment

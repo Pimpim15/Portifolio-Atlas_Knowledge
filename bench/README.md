@@ -18,6 +18,15 @@ pip install -r bench/requirements.txt
 locust -f bench/locustfile.py --headless --users 10 --spawn-rate 2 --run-time 5m --host https://atlas.dev.example.com
 ```
 
+### Runner automatizado
+
+```bash
+poetry run python bench/run_headless.py --host https://atlas.stage.example.com --users 50 --spawn-rate 5 --run-time 5m --prefix stage-$(date +%Y%m%d%H%M)
+```
+
+- Os CSVs e gráficos serão armazenados em `bench/results/<prefix>*`.
+- Consulte `bench/results/sample_report.md` para um exemplo de análise consolidada.
+
 ### Execução interativa
 
 ```bash

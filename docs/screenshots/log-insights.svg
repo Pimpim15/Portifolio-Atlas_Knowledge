@@ -1,0 +1,13 @@
+<svg width="720" height="420" viewBox="0 0 720 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="420" rx="16" fill="#0F172A"/>
+  <text x="32" y="48" fill="#F8FAFC" font-size="24" font-family="Segoe UI, sans-serif">CloudWatch Logs Insights – worker_failures</text>
+  <rect x="32" y="72" width="656" height="64" rx="12" fill="#111C33" stroke="#38BDF8" stroke-width="2"/>
+  <text x="48" y="108" fill="#E2E8F0" font-size="16" font-family="Consolas, monospace">fields @timestamp, event, trace_id, atlas.worker.job_id as job_id</text>
+  <text x="48" y="132" fill="#94A3B8" font-size="14" font-family="Consolas, monospace">| filter component = "worker" and level = "error"</text>
+  <rect x="32" y="160" width="656" height="212" rx="12" fill="#111C33" stroke="#475569" stroke-width="1"/>
+  <text x="48" y="190" fill="#E2E8F0" font-size="15" font-family="Consolas, monospace">2025-10-14T22:41:18Z  worker_processing_failed  trace=5d4e... job=42d2...</text>
+  <text x="48" y="220" fill="#CBD5F5" font-size="15" font-family="Consolas, monospace">2025-10-14T22:35:02Z  worker_mark_job_item_error_failed  trace=3af1... job=91c7...</text>
+  <text x="48" y="250" fill="#CBD5F5" font-size="15" font-family="Consolas, monospace">2025-10-14T22:29:44Z  worker_invalid_document_payload  trace=7bc2... job=—</text>
+  <text x="48" y="280" fill="#CBD5F5" font-size="15" font-family="Consolas, monospace">2025-10-14T22:21:12Z  worker_delete_document_failed  trace=1ea8... job=8f0a...</text>
+  <text x="48" y="360" fill="#94A3B8" font-size="13" font-family="Segoe UI, sans-serif">Resultados ilustrativos alinhados à nova query cadastrada via Terraform</text>
+</svg>

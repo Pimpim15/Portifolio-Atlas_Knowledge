@@ -1,0 +1,14 @@
+<svg width="720" height="420" viewBox="0 0 720 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="420" rx="16" fill="#101828"/>
+  <text x="32" y="48" fill="#FFFFFF" font-size="24" font-family="Segoe UI, sans-serif">AWS X-Ray – trace atlas-api 9f52a87d6c1b4ed8</text>
+  <line x1="120" y1="90" x2="680" y2="90" stroke="#1D4ED8" stroke-width="2" stroke-dasharray="6 8"/>
+  <rect x="140" y="120" width="420" height="44" rx="10" fill="#2563EB"/>
+  <text x="156" y="148" fill="#FFFFFF" font-size="16" font-family="Segoe UI, sans-serif">HTTP POST /docs – 420 ms</text>
+  <rect x="160" y="190" width="220" height="36" rx="8" fill="#38BDF8"/>
+  <text x="174" y="214" fill="#041222" font-size="14" font-family="Segoe UI, sans-serif">SQL INSERT documents – 150 ms</text>
+  <rect x="400" y="190" width="180" height="36" rx="8" fill="#34D399"/>
+  <text x="414" y="214" fill="#041222" font-size="14" font-family="Segoe UI, sans-serif">SQS SendMessage – 80 ms</text>
+  <rect x="220" y="250" width="280" height="36" rx="8" fill="#F97316"/>
+  <text x="234" y="274" fill="#041222" font-size="14" font-family="Segoe UI, sans-serif">Worker.process_message – 90 ms</text>
+  <text x="32" y="350" fill="#9BA4BF" font-size="14">Trace correlacionado automaticamente via atributos W3C traceparent</text>
+</svg>

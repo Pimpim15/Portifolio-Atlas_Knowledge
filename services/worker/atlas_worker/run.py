@@ -6,7 +6,7 @@ import contextlib
 import json
 import time
 import uuid
-from typing import Any
+from typing import Any, Iterator
 
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import]
 
@@ -21,6 +21,7 @@ from services.api.atlas_api.observability.metrics import (
     WORKER_ACTION_COUNT,
     WORKER_PROCESSING_ERRORS,
     WORKER_PROCESSING_LATENCY,
+    WORKER_MESSAGE_AGE_SECONDS,
 )
 from services.api.atlas_api.observability.tracing import setup_tracing
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client
@@ -38,12 +39,59 @@ from services.api.atlas_api.search.os_client import (
 )
 
 try:  # pragma: no cover - optional dependency
+    from opentelemetry import context as otel_context  # type: ignore[import]
     from opentelemetry import trace  # type: ignore[import]
+    from opentelemetry.trace.propagation.tracecontext import (  # type: ignore[import]
+        TraceContextTextMapPropagator,
+    )
 except ImportError:  # pragma: no cover - optional dependency
     trace = None
+    otel_context = None
+    TraceContextTextMapPropagator = None
 
 logger = get_logger(component="worker")
 TRACER = trace.get_tracer("atlas-worker") if trace else None
+
+
+@contextlib.contextmanager
+def _attach_trace_from_message_attributes(message_attributes: dict[str, Any]) -> Iterator[None]:
+    if TraceContextTextMapPropagator is None or otel_context is None:
+        yield
+        return
+
+    carrier: dict[str, str] = {}
+    for key, attr in message_attributes.items():
+        if not isinstance(attr, dict):
+            continue
+        value = attr.get("StringValue")
+        if isinstance(value, str) and value:
+            carrier[key] = value
+
+    if not carrier:
+        yield
+        return
+
+    context = TraceContextTextMapPropagator().extract(carrier)
+    token = otel_context.attach(context)
+    try:
+        yield
+    finally:
+        otel_context.detach(token)
+
+
+def _observe_message_age(attributes: dict[str, Any]) -> None:
+    sent_ts = attributes.get("SentTimestamp")
+    if sent_ts is None:
+        return
+
+    try:
+        sent_epoch_ms = int(sent_ts)
+    except (TypeError, ValueError):
+        logger.debug("worker_invalid_sent_timestamp", sent_timestamp=sent_ts)
+        return
+
+    age_seconds = max(0.0, time.time() - (sent_epoch_ms / 1000.0))
+    WORKER_MESSAGE_AGE_SECONDS.observe(age_seconds)
 
 
 def _process_message(body: dict[str, Any], client: Any) -> None:
@@ -191,6 +239,43 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
                 )
 
 
+def _handle_message(
+    *,
+    client: Any,
+    queue_url: str,
+    os_client: Any,
+    message: dict[str, Any],
+    payload: dict[str, Any],
+    receipt_handle: str,
+) -> None:
+    try:
+        _observe_message_age(message.get("Attributes", {}))
+
+        with _attach_trace_from_message_attributes(message.get("MessageAttributes", {})):
+            bind_context(
+                message_id=message.get("MessageId"),
+                receipt_handle=receipt_handle,
+                queue_url=queue_url,
+            )
+            try:
+                _process_message(payload, os_client)
+            finally:
+                unbind_context("message_id", "receipt_handle", "queue_url")
+    except Exception:  # pragma: no cover - processing failure
+        logger.exception(
+            "worker_processing_failed",
+            payload=payload,
+        )
+    finally:
+        try:
+            client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+        except (BotoCoreError, ClientError):  # pragma: no cover
+            logger.exception(
+                "sqs_delete_failed",
+                payload=payload,
+            )
+
+
 def _poll_loop() -> None:
     settings = get_settings()
     if not settings.sqs_queue_url:
@@ -210,6 +295,8 @@ def _poll_loop() -> None:
                 MaxNumberOfMessages=10,
                 WaitTimeSeconds=20,
                 VisibilityTimeout=60,
+                MessageAttributeNames=["All"],
+                AttributeNames=["SentTimestamp"],
             )
         except (BotoCoreError, ClientError) as exc:  # pragma: no cover - runtime failure
             logger.exception(
@@ -243,27 +330,14 @@ def _poll_loop() -> None:
                 client.delete_message(QueueUrl=settings.sqs_queue_url, ReceiptHandle=receipt_handle)
                 continue
 
-            try:
-                bind_context(
-                    message_id=message.get("MessageId"),
-                    receipt_handle=receipt_handle,
-                    queue_url=settings.sqs_queue_url,
-                )
-                _process_message(payload, os_client)
-            except Exception:  # pragma: no cover - processing failure
-                logger.exception(
-                    "worker_processing_failed",
-                    payload=payload,
-                )
-            finally:
-                unbind_context("message_id", "receipt_handle", "queue_url")
-                try:
-                    client.delete_message(QueueUrl=settings.sqs_queue_url, ReceiptHandle=receipt_handle)
-                except (BotoCoreError, ClientError):  # pragma: no cover
-                    logger.exception(
-                        "sqs_delete_failed",
-                        payload=payload,
-                    )
+            _handle_message(
+                client=client,
+                queue_url=settings.sqs_queue_url,
+                os_client=os_client,
+                message=message,
+                payload=payload,
+                receipt_handle=receipt_handle,
+            )
 
 
 def main() -> None:
