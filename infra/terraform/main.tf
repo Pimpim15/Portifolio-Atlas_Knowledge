@@ -30,9 +30,11 @@ module "rds" {
 }
 
 module "opensearch" {
-  source      = "./modules/opensearch"
-  environment = var.environment
-  vpc_id      = module.vpc.vpc_id
+  source             = "./modules/opensearch"
+  environment        = var.environment
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  vpc_cidr_block     = module.vpc.cidr_block
 }
 
 module "sqs" {
