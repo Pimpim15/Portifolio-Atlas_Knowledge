@@ -20,7 +20,6 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Pipeline assíncrono com SQS + worker Python para indexar e remover documentos no OpenSearch.
 - Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
-- Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry. Reindex expõe gauges (`atlas_reindex_jobs_status`, `atlas_reindex_job_items_status`, `atlas_reindex_job_oldest_active_seconds`) para dashboards/alertas.
   - Dashboard Grafana pronto (`infra/grafana/reindex-dashboard.json`) com visão operacional dos jobs/itens e tendências por hora.
   - Regras de alerta Prometheus (`infra/otel/reindex-alert-rules.yaml`) cobrindo stuck jobs, falhas recorrentes e estagnação de processamento.
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
@@ -30,13 +29,18 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Endpoint `POST /docs/reindex` com job tracking, métricas Prometheus, spans OpenTelemetry, worker atualizando progresso/erros, painel administrativo no frontend e listagem paginada de itens (`GET /docs/reindex/{job_id}/items`).
 - Módulo Terraform de SQS com DLQ, SSE e alarmes CloudWatch para o pipeline de documentos.
 - Módulo Terraform de VPC com IGW, NAT Gateway, sub-redes públicas/privadas e rotas gerenciadas.
+- Application Load Balancer com HTTPS (ACM), SG dedicado, redirecionamento HTTP→HTTPS e roteamento para API/Frontend.
 
 ### ⚠️ Pendências
 
-- Terraform com recursos reais (VPC com IGW/NAT, ALB HTTPS, Secrets Manager, autoscaling, DLQ SQS, sidecar ADOT).
-- Pipeline de deploy GitHub Actions com _plan/apply_ por ambiente, imagens versionadas e aprovações.
-- Dashboards/alertas CloudWatch, enriquecimento de traces cross-service e publicação de screenshots/logs no README.
-- Cenários de carga (Locust/wrk) e documentação dos resultados.
+| Status | Entrega | Observações |
+| --- | --- | --- |
+| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
+| 🚧 | Observabilidade ponta a ponta | Dashboards/alertas CloudWatch, enriquecimento de traces cross-service e publicação de screenshots/logs no README. |
+| 🚧 | Terraform com recursos reais | SQS, VPC e ALB prontos (DLQ, SSE, IGW, NAT, HTTPS). Pendências: Secrets Manager real, autoscaling frontend, parametrização multi-AZ avançada. |
+| 🚧 | Deploy automatizado (GitHub Actions + Terraform) | Workflow existe, depende de variáveis/infra reais e etapas de approval. |
+| ⏳ | Benchmarks Locust/wrk com métricas publicadas | Scripts base criados, falta execução e análise. |
+| ⏳ | Screenshots/logs/dashboards no README | Aguardando finalização das features de observabilidade. |
 
 ## Arquitetura
 
@@ -136,6 +140,13 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
   1. Referencie o arquivo na configuração do alertmanager/prometheus (`rule_files`).
   2. Ajuste os rótulos `service`/`severity` conforme a taxonomia local.
   3. Defina rotas no Alertmanager para e-mails/Slack incidentais.
+- TLS no ALB:
+  1. Gere/import um certificado ACM válido (wildcard recomendado) na região configurada (`alb_certificate_arn`).
+  2. Atualize `infra/terraform/envs/<env>/terraform.tfvars` com o ARN correto.
+  3. Opcional: restrinja o acesso público ajustando `alb_allowed_cidrs`.
+- Integração ECS ↔ ALB:
+  - API roda em Fargate com autoscaling (CPU target ≥ 60%).
+  - Target group `atlas-<env>-api` recebe o tráfego HTTPS; paths definidos em `alb_frontend_path_patterns` podem ser roteados para workloads de frontend.
 
 ## Segurança
 

@@ -34,25 +34,28 @@ module "sqs" {
   environment = var.environment
 }
 
-module "ecs" {
-  source              = "./modules/ecs_service"
-  environment         = var.environment
-  vpc_id              = module.vpc.vpc_id
-  private_subnet_ids  = module.vpc.private_subnet_ids
-  cluster_name        = "atlas-knowledge"
-  rds_secret_arn      = module.rds.secret_arn
-  opensearch_endpoint = module.opensearch.endpoint
-  sqs_queue_arn       = module.sqs.queue_arn
-  sqs_queue_url       = module.sqs.queue_url
+module "alb" {
+  source                 = "./modules/alb"
+  environment            = var.environment
+  vpc_id                 = module.vpc.vpc_id
+  public_subnet_ids      = module.vpc.public_subnet_ids
+  certificate_arn        = var.alb_certificate_arn
+  allowed_cidrs          = var.alb_allowed_cidrs
+  frontend_path_patterns = var.alb_frontend_path_patterns
 }
 
-module "alb" {
-  source            = "./modules/alb"
-  environment       = var.environment
-  vpc_id            = module.vpc.vpc_id
-  public_subnet_ids = module.vpc.public_subnet_ids
-  api_target_group  = module.ecs.api_target_group
-  fe_target_group   = module.ecs.frontend_target_group
+module "ecs" {
+  source                = "./modules/ecs_service"
+  environment           = var.environment
+  vpc_id                = module.vpc.vpc_id
+  private_subnet_ids    = module.vpc.private_subnet_ids
+  cluster_name          = "atlas-knowledge"
+  rds_secret_arn        = module.rds.secret_arn
+  opensearch_endpoint   = module.opensearch.endpoint
+  sqs_queue_arn         = module.sqs.queue_arn
+  sqs_queue_url         = module.sqs.queue_url
+  alb_security_group_id = module.alb.security_group_id
+  api_target_group_arn  = module.alb.api_target_group_arn
 }
 
 module "oidc" {

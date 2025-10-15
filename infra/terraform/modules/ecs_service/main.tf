@@ -6,6 +6,8 @@ variable "rds_secret_arn" { type = string }
 variable "opensearch_endpoint" { type = string }
 variable "sqs_queue_arn" { type = string }
 variable "sqs_queue_url" { type = string }
+variable "alb_security_group_id" { type = string }
+variable "api_target_group_arn" { type = string }
 variable "api_image" {
   type    = string
   default = "123456789012.dkr.ecr.us-east-1.amazonaws.com/atlas-api:latest"
@@ -13,6 +15,31 @@ variable "api_image" {
 variable "worker_image" {
   type    = string
   default = "123456789012.dkr.ecr.us-east-1.amazonaws.com/atlas-worker:latest"
+}
+
+variable "api_desired_count" {
+  type    = number
+  default = 2
+}
+
+variable "api_min_capacity" {
+  type    = number
+  default = 2
+}
+
+variable "api_max_capacity" {
+  type    = number
+  default = 4
+}
+
+variable "api_scale_cpu_threshold" {
+  type    = number
+  default = 60
+}
+
+variable "worker_desired_count" {
+  type    = number
+  default = 1
 }
 
 data "aws_region" "current" {}
@@ -69,13 +96,23 @@ resource "aws_ecs_service" "api" {
   name            = "atlas-api-${var.environment}"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.api.arn
-  desired_count   = 1
+  desired_count   = var.api_desired_count
   launch_type     = "FARGATE"
+  health_check_grace_period_seconds = 60
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+  enable_execute_command             = true
 
   network_configuration {
-    subnets         = var.private_subnet_ids
+    subnets          = var.private_subnet_ids
     assign_public_ip = false
-    security_groups = [aws_security_group.ecs.id]
+    security_groups  = [aws_security_group.ecs_tasks.id]
+  }
+
+  load_balancer {
+    target_group_arn = var.api_target_group_arn
+    container_name   = "api"
+    container_port   = 8000
   }
 }
 
@@ -115,27 +152,41 @@ resource "aws_ecs_service" "worker" {
   name            = "atlas-worker-${var.environment}"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.worker.arn
-  desired_count   = 1
+  desired_count   = var.worker_desired_count
   launch_type     = "FARGATE"
+  enable_execute_command = true
 
   network_configuration {
-    subnets         = var.private_subnet_ids
+    subnets          = var.private_subnet_ids
     assign_public_ip = false
-    security_groups = [aws_security_group.ecs.id]
+    security_groups  = [aws_security_group.worker.id]
   }
 }
 
-resource "aws_security_group" "ecs" {
-  name        = "atlas-ecs-${var.environment}"
-  description = "Acesso interno ECS"
+resource "aws_security_group" "ecs_tasks" {
+  name        = "atlas-ecs-api-${var.environment}"
+  description = "Permite ALB acessar tasks da API"
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port   = 8000
-    to_port     = 8000
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
+    from_port       = 8000
+    to_port         = 8000
+    protocol        = "tcp"
+    security_groups = [var.alb_security_group_id]
   }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "worker" {
+  name        = "atlas-ecs-worker-${var.environment}"
+  description = "Permite worker sair para serviços externos"
+  vpc_id      = var.vpc_id
 
   egress {
     from_port   = 0
@@ -183,17 +234,39 @@ resource "aws_iam_role_policy" "task" {
         Effect   = "Allow"
         Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = ["${aws_cloudwatch_log_group.api.arn}:*", "${aws_cloudwatch_log_group.worker.arn}:*"]
+      },
+      {
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = [var.rds_secret_arn]
       }
     ]
   })
 }
 
-output "api_target_group" {
-  value = "atlas-api-tg-placeholder"
+resource "aws_appautoscaling_target" "api" {
+  max_capacity       = var.api_max_capacity
+  min_capacity       = var.api_min_capacity
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.api.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
 }
 
-output "frontend_target_group" {
-  value = "atlas-frontend-tg-placeholder"
+resource "aws_appautoscaling_policy" "api_cpu" {
+  name               = "atlas-api-cpu-${var.environment}"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.api.resource_id
+  scalable_dimension = aws_appautoscaling_target.api.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.api.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value       = var.api_scale_cpu_threshold
+    scale_in_cooldown  = 120
+    scale_out_cooldown = 60
+  }
 }
 
 output "api_service_name" {
@@ -202,4 +275,12 @@ output "api_service_name" {
 
 output "worker_service_name" {
   value = aws_ecs_service.worker.name
+}
+
+output "cluster_arn" {
+  value = aws_ecs_cluster.this.arn
+}
+
+output "api_security_group_id" {
+  value = aws_security_group.ecs_tasks.id
 }
