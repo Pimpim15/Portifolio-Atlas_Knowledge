@@ -57,8 +57,9 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
 
     events: list[dict[str, Any]] = []
 
-    def fake_send_message(payload: dict[str, Any]) -> None:
+    def fake_send_message(payload: dict[str, Any]) -> bool:
         events.append(payload)
+        return True
 
     monkeypatch.setattr(queue_publisher, "_send_message", fake_send_message)
 

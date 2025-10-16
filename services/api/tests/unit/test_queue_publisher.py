@@ -36,7 +36,7 @@ def test_send_message_includes_trace_headers(monkeypatch: pytest.MonkeyPatch) ->
 
     tracer = trace.get_tracer("test")
     with tracer.start_as_current_span("parent"):
-        publisher._send_message({"action": "index"})
+        result = publisher._send_message({"action": "index"})
 
     assert captured["QueueUrl"] == "https://queue"
     assert "MessageAttributes" in captured
@@ -44,3 +44,4 @@ def test_send_message_includes_trace_headers(monkeypatch: pytest.MonkeyPatch) ->
     assert "traceparent" in attrs
     assert attrs["traceparent"]["DataType"] == "String"
     assert "StringValue" in attrs["traceparent"]
+    assert result is True
