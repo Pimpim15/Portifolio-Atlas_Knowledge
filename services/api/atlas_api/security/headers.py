@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from fastapi import Request
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+
+RequestHandler = Callable[[Request], Awaitable[Response]]
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -14,7 +18,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next: RequestHandler) -> Response:
         response = await call_next(request)
         self._apply_headers(response)
         return response

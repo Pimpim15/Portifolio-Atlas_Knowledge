@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 
-from fastapi import Request
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from .logging import bind_context, get_logger, unbind_context
 from .metrics import REQUEST_COUNT, REQUEST_LATENCY
+
+RequestHandler = Callable[[Request], Awaitable[Response]]
 
 
 class ObservabilityMiddleware(BaseHTTPMiddleware):
@@ -19,7 +22,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next: RequestHandler) -> Response:
         start = time.perf_counter()
         route_template = request.scope.get("route")
         route = getattr(route_template, "path", request.url.path)

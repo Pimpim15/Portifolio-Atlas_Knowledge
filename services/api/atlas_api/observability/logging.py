@@ -1,29 +1,36 @@
 """Configuração de logs estruturados."""
 
 import logging
+from types import ModuleType
 from typing import Any, cast
 
 import structlog
-
-try:
-    from opentelemetry import trace  # type: ignore[import]
-except ImportError:  # pragma: no cover
-    trace = None
-
-from structlog.contextvars import (  # type: ignore[import]
+from structlog.contextvars import (
     bind_contextvars,
     clear_contextvars,
     merge_contextvars,
     unbind_contextvars,
 )
-from structlog.stdlib import BoundLogger  # type: ignore[import]
+from structlog.stdlib import BoundLogger
+from structlog.typing import EventDict, Processor, WrappedLogger
 
 
-def _add_trace_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    if trace is None:  # pragma: no cover - defensive
+def _load_trace_module() -> ModuleType | None:
+    try:
+        from opentelemetry import trace as trace_module
+    except ImportError:  # pragma: no cover
+        return None
+    return trace_module
+
+
+ot_trace = _load_trace_module()
+
+
+def _add_trace_context(_: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
+    if ot_trace is None:  # pragma: no cover - defensive
         return event_dict
 
-    span = trace.get_current_span()
+    span = ot_trace.get_current_span()
     context = span.get_span_context()
     if context is not None and context.trace_id != 0:
         event_dict.setdefault("trace_id", f"{context.trace_id:032x}")
@@ -33,8 +40,7 @@ def _add_trace_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str,
 
 def configure_logging(level: int = logging.INFO) -> None:
     logging.basicConfig(level=level, format="%(message)s")
-    structlog.configure(
-        processors=[
+    processors: list[Processor] = [
             merge_contextvars,
             _add_trace_context,
             structlog.processors.TimeStamper(fmt="iso"),
@@ -43,7 +49,9 @@ def configure_logging(level: int = logging.INFO) -> None:
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
-        ],
+    ]
+    structlog.configure(
+        processors=processors,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,

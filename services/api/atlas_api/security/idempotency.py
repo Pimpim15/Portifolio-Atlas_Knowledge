@@ -5,12 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from fastapi import HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
-from redis import Redis  # type: ignore[import]
+from redis import Redis
 
 HEADER_KEY = "Idempotency-Key"
 DEFAULT_TTL_SECONDS = 86_400
@@ -32,13 +32,16 @@ def extract_idempotency_key(request: Request) -> str:
 
 
 def _load_cached_payload(redis: Redis, cache_key: str) -> dict[str, Any] | None:
-    raw = redis.get(cache_key)
+    raw = cast(bytes | None, redis.get(cache_key))
     if raw is None:
         return None
     try:
-        return json.loads(raw.decode("utf-8"))
+        payload = json.loads(raw.decode("utf-8"))
     except (ValueError, AttributeError):  # pragma: no cover - defensive
         return None
+    if isinstance(payload, dict):
+        return cast(dict[str, Any], payload)
+    return None
 
 
 @dataclass

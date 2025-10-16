@@ -35,6 +35,11 @@ class Organization(Base):
 
     documents: Mapped[list[Document]] = relationship(back_populates="organization")
     memberships: Mapped[list[Membership]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    reindex_jobs: Mapped[list[ReindexJob]] = relationship(
+        "ReindexJob",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
 
 
 class RoleEnum(str, RoleType):
@@ -116,6 +121,12 @@ class ReindexJob(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     organization: Mapped[Organization] = relationship(back_populates="reindex_jobs")
+    items: Mapped[list[ReindexJobItem]] = relationship(
+        "ReindexJobItem",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="ReindexJobItem.created_at",
+    )
 
 
 class ReindexJobItem(Base):
@@ -131,17 +142,3 @@ class ReindexJobItem(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
     job: Mapped[ReindexJob] = relationship(back_populates="items")
-
-
-Organization.reindex_jobs = relationship(  # type: ignore[attr-defined]
-    "ReindexJob",
-    back_populates="organization",
-    cascade="all, delete-orphan",
-)
-
-ReindexJob.items = relationship(  # type: ignore[attr-defined]
-    "ReindexJobItem",
-    back_populates="job",
-    cascade="all, delete-orphan",
-    order_by="ReindexJobItem.created_at",
-)

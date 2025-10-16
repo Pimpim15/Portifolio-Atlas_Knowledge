@@ -8,9 +8,11 @@ from collections import Counter
 from collections.abc import Sequence
 from contextlib import nullcontext
 from datetime import UTC, date, datetime, timedelta
+from types import ModuleType
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
+from redis import Redis
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,16 +33,22 @@ from ..reindex.progress import update_reindex_metrics
 from ..security.idempotency import build_idempotency_context
 from ..security.ratelimit import init_rate_limiter
 
-try:  # pragma: no cover - optional dependency
-    from opentelemetry import trace  # type: ignore[import]
-except ImportError:  # pragma: no cover - optional dependency
-    trace = None
+
+def _load_trace_module() -> ModuleType | None:
+    try:  # pragma: no cover - optional dependency
+        from opentelemetry import trace as trace_module
+    except ImportError:  # pragma: no cover - optional dependency
+        return None
+    return trace_module
+
+
+ot_trace = _load_trace_module()
 
 router = APIRouter()
 settings = get_settings()
 limiter = init_rate_limiter()
 logger = get_logger(component="api", module="docs")
-tracer = trace.get_tracer("atlas-api.docs") if trace else None
+tracer = ot_trace.get_tracer("atlas-api.docs") if ot_trace else None
 
 
 def _encode_cursor(item: ReindexJobItem) -> str:
@@ -83,8 +91,8 @@ async def create_document(
     request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
-    redis = Depends(get_redis),
-) -> DocumentOut:
+    redis: Redis = Depends(get_redis),
+) -> DocumentOut | Response:
     idem_context = await build_idempotency_context(request, redis, str(current_user.id))
     replay = idem_context.replay_if_available()
     if replay is not None:
@@ -131,8 +139,8 @@ async def update_document(
     request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
-    redis = Depends(get_redis),
-) -> DocumentOut:
+    redis: Redis = Depends(get_redis),
+) -> DocumentOut | Response:
     idem_context = await build_idempotency_context(request, redis, str(current_user.id))
     replay = idem_context.replay_if_available()
     if replay is not None:
@@ -666,7 +674,7 @@ async def delete_document(
     request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["editor", "admin"])),
     session: AsyncSession = Depends(get_db),
-    redis = Depends(get_redis),
+    redis: Redis = Depends(get_redis),
 ) -> Response:
     idem_context = await build_idempotency_context(request, redis, str(current_user.id))
     replay = idem_context.replay_if_available()

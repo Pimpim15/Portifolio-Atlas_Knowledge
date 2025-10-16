@@ -12,20 +12,15 @@ from ..observability.metrics import REINDEX_DOCUMENT_ENQUEUED
 from ..search.serializers import serialize_document
 from .sqs import ensure_queue_exists, get_sqs_client
 
-try:  # pragma: no cover - optional instrumentation
-    from opentelemetry.trace.propagation.tracecontext import (  # type: ignore[import]
-        TraceContextTextMapPropagator,
-    )
-except ImportError:  # pragma: no cover - optional instrumentation
-    TraceContextTextMapPropagator = None
-
 logger = get_logger(component="api", module="queue.publisher")
 
 DOCUMENT_EVENT_SOURCE = "atlas.documents"
 
 
 def _build_trace_message_attributes() -> dict[str, dict[str, str]]:
-    if TraceContextTextMapPropagator is None:
+    try:
+        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+    except ImportError:  # pragma: no cover - optional instrumentation
         return {}
 
     carrier: dict[str, str] = {}
@@ -48,7 +43,7 @@ def _send_message(payload: dict[str, Any]) -> None:
     ensure_queue_exists(settings.sqs_queue_url)
     message_attributes = _build_trace_message_attributes()
     try:
-        params = {
+        params: dict[str, Any] = {
             "QueueUrl": settings.sqs_queue_url,
             "MessageBody": json.dumps(payload),
         }

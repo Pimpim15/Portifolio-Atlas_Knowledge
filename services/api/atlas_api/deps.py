@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from fastapi import Depends, Header
 from fastapi import status as http_status
 from fastapi.exceptions import HTTPException
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from redis import Redis  # type: ignore[import]
+from redis import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -58,7 +59,7 @@ async def get_current_user(
         else:
             audience = raw_audience
 
-        decode_kwargs: dict[str, object] = {
+        decode_kwargs: dict[str, Any] = {
             "algorithms": [settings.jwt_algorithm],
         }
         if audience:
@@ -67,7 +68,7 @@ async def get_current_user(
         payload = jwt.decode(
             token,
             settings.jwt_public_key,
-            **decode_kwargs,  # type: ignore[arg-type]
+            **decode_kwargs,
         )
     except JWTError as exc:  # pragma: no cover - jose já cobre mensagens de erro
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc

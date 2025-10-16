@@ -1,11 +1,12 @@
 """Ponto de entrada FastAPI."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from slowapi.errors import RateLimitExceeded  # type: ignore[import]
+from slowapi.errors import RateLimitExceeded
 
 from .observability.logging import configure_logging
 from .observability.middleware import ObservabilityMiddleware
@@ -23,7 +24,7 @@ def create_app() -> FastAPI:
     limiter = init_rate_limiter()
     app.state.limiter = limiter
 
-    from slowapi.middleware import SlowAPIMiddleware  # type: ignore[import]
+    from slowapi.middleware import SlowAPIMiddleware
 
     app.add_middleware(ObservabilityMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
@@ -54,7 +55,7 @@ def create_app() -> FastAPI:
     from .bootstrap import init_application
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await init_application()
         yield
 

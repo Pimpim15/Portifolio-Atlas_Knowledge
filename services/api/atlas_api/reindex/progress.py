@@ -53,7 +53,7 @@ async def _update_reindex_metrics(session: AsyncSession) -> None:
     for status in _ALL_STATUSES:
         REINDEX_JOB_ITEMS_STATUS.labels(status=status.value).set(item_counts[status])
 
-    oldest_active_stmt: Select[tuple[datetime | None]] = (
+    oldest_active_stmt = (
         select(func.min(ReindexJob.created_at))
         .where(ReindexJob.status.in_([ReindexJobStatus.PENDING, ReindexJobStatus.RUNNING]))
     )

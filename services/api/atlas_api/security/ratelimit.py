@@ -3,8 +3,8 @@
 import os
 from functools import lru_cache
 
-from slowapi import Limiter  # type: ignore[import]
-from slowapi.util import get_remote_address  # type: ignore[import]
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..config import get_settings
 
