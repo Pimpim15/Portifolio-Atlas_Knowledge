@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     database_url: str = Field("sqlite+aiosqlite:///./atlas.db", alias="DATABASE_URL")
     redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
-    opensearch_endpoint: str = Field("https://localhost:9200", alias="OPENSEARCH_ENDPOINT")
+    opensearch_endpoint: str = Field("http://localhost:9200", alias="OPENSEARCH_ENDPOINT")
     sqs_queue_url: str | None = Field(None, alias="SQS_QUEUE_URL")
     aws_region: str = Field("us-east-1", alias="AWS_REGION")
     aws_access_key_id: str | None = Field(None, alias="AWS_ACCESS_KEY_ID")
