@@ -1,1 +1,2 @@
 timestamp,environment,duration,users,requests,rps,latency_avg_ms,latency_p95_ms,errors,fail_rate,notes,summary_file
+2025-10-16T03:07:56,local,3m,20,1188,6.65,108.9,580.0,0,0.0,Real OpenSearch via docker compose,bench/results/local-official_summary.md

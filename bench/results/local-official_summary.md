@@ -4,10 +4,10 @@
 | --- | --- |
 | Duração | 3m |
 | Usuários simultâneos | 20 |
-| Requisições totais | 936 |
-| Taxa média (req/s) | 5.24 |
-| Latência média | 68.87 ms |
-| Latência p95 | 460.00 ms |
+| Requisições totais | 1188 |
+| Taxa média (req/s) | 6.65 |
+| Latência média | 108.90 ms |
+| Latência p95 | 580.00 ms |
 | Erros | 0 |
 | Taxa de falha | 0.00% |
 

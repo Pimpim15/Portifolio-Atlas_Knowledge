@@ -65,7 +65,7 @@ acompanhamento longitudinal.
 
 | Data | Ambiente | Duração | Usuários | Média (ms) | p95 (ms) | Erros | Notas |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| _(preencher)_ | | | | | | | |
+| 2025-10-16 | local | 3m | 20 | 108.90 | 580.00 | 0 | Real OpenSearch via docker compose |
 
 > Ao registrar um novo teste, aponte para o respectivo resumo (`<prefix>_summary.md`) no artefato da
 > esteira ou bucket utilizado.
