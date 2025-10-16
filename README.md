@@ -39,7 +39,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 | ✅ | Observabilidade ponta a ponta | Tracing cross-service ativo (SQS → worker), dashboard + alarmes CloudWatch, queries Log Insights versionadas e evidências publicadas em `docs/observability.md`. |
 | ✅ | Terraform com recursos reais | Infra estratificada com rotação automática do segredo RDS via Lambda gerenciada, otimizações de custo e observabilidade nativa. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipeline com planos/applies para dev/stage/prod, ambientes protegidos e redeploy ECS por ambiente. |
-| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless (`bench/run_headless.py`) e _smoke_ no PR (`locust-smoke`) prontos; falta executar cargas oficiais e anexar resultados consolidados. |
+| ✅ | Benchmarks Locust/wrk com métricas publicadas | Bench oficial executado contra OpenSearch real; resumo em `bench/results/local-official_summary.md` e histórico versionado em `docs/performance-history.csv`. |
 
 ## Arquitetura
 
@@ -189,16 +189,14 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Observabilidade ponta a ponta | Tracing, dashboards, alarmes e queries Log Insights versionadas; screenshots adicionadas à documentação. |
 | ✅ | Terraform com recursos reais | Infra concluída com rotação automática de segredos, controles de custo e outputs para observabilidade. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipelines multiambiente com approvals e redeploy ECS automatizado. |
-| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless e artefatos automáticos prontos; aguarda execução oficial e publicação dos resultados reais. |
+| ✅ | Benchmarks Locust/wrk com métricas publicadas | Bench oficial executado contra OpenSearch real; resultados documentados em `docs/performance.md`. |
 | ✅ | Screenshots/logs/dashboards no README | Evidências capturadas e linkadas em `docs/observability.md`. |
 
 ## Backlog priorizado para Product Ready
 
-1. **Consolidar benchmarks oficiais**: executar cargas em stage/prod, anexar CSVs e análise comparativa ao repositório.
-2. **UI e dashboards analíticos**: ampliar visualizações (gráficos detalhados, filtros) e cobrir fluxos com testes E2E.
-3. **Guardrails de custos e capacidade**: configurar AWS Budgets, storage autoscaling e alarmes de limites críticos.
-4. **Smoke tests automatizados**: acoplar `bench/run_headless.py` ao pipeline para validar releases antes do deploy.
-5. **Hardening de segurança**: revisar checklist, aplicar pen tests leves e documentar respostas a incidentes.
+1. **UI e dashboards analíticos**: priorizar gráficos avançados, filtros dinâmicos e cobertura com testes E2E (login, criação/edição, analytics).
+2. **Hardening de segurança**: implementar revogação de tokens (`jti`/Redis), MFA opcional, WAF com regras OWASP e CORS restritivo; atualizar o checklist.
+3. **Governança & compliance**: formalizar política de retenção de dados/logs (S3 WORM/365 dias), automatizar revisões de permissões IAM/RBAC e documentar runbooks de incidentes.
 
 ## Créditos
 
