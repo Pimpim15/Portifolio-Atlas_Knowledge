@@ -74,11 +74,27 @@ async def update_reindex_metrics(session: AsyncSession) -> None:
 
 
 def _run_async(coro: Awaitable[object]) -> object:
-    loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(coro)
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
+
+    task = running_loop.create_task(coro)
+
+    def _handle_task_result(fut: asyncio.Future[object]) -> None:  # pragma: no cover - logging only
+        try:
+            fut.result()
+        except Exception:
+            logger.exception("reindex_async_task_failed")
+
+    task.add_done_callback(_handle_task_result)
+    return None
 
 
 def _normalize_uuid(value: uuid.UUID | str) -> uuid.UUID:

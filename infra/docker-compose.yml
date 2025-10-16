@@ -9,7 +9,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://atlas:atlas@postgres:5432/atlas
       REDIS_URL: redis://redis:6379/0
-      OPENSEARCH_ENDPOINT: https://opensearch:9200
+      OPENSEARCH_ENDPOINT: "http://opensearch:9200"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+    AWS_ENDPOINT_URL: "http://localstack:4566"
       JWT_ISSUER: atlas-knowledge
       JWT_AUDIENCE: '["atlas-api"]'
       JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCphet7PzeFISjL\n1wFLRmO7GnH5mcLYNgtFnzaTt9nQvOvWxn/5vqSf88V2hu0WCpQlvrRTWe/IVONy\nzGX+U8FQx44OG10v0d8z7wp9BlEkkXR9W50/sKuVM7z5+EPcZO90GvMSZsOisN7/\nSqcEcqe3QECDQntvThgngP+T2+UmhVxYyQbK7TFTWHYcnsMtShec6/ytcpi8dDlV\nVxQcU75+B45LTLl3j7AUYqyXrM7wVrH6QEqMj4eCrAid9VwQAlmV13ASQyTn6URM\nuAIIW7LXOxmkN7nEJZSKqRjXOMiWQ2ePz18fAP29jai1yN3RregvSE0SGbP3a6Qg\nbzEnlZgTAgMBAAECggEAM2cIIDbq/tMvK5/mJI0TcIh0Rtr42daJVHMSeXgl88VV\nPaqy42eLQ3UHSwlemnBau5c31o5Oxs/2p7iStKtw0q2vxVdGylk49OZmp8JimFQC\nnoBJDibj4Dnv81v0N7/jW7FQQyQl7g7zjzVzr0WU1VwGM8bU5ssnR9M1q//hW+xU\n/Zw1ftErb54xtgxNMWGojzOs3CwLbWgWn/ct7zDCfPFIc6RH2RPhN8FUrvEHOA+f\n+AEcrSqQkhF1CXkGWt8WNhMoHQEgYMhHqBZXnih8Fw/W4wLxUySjPcF/2+elEa3d\nJwENWM0sSa8BrJC+6bJwwInalDtHzLH/AAAy8RsCAQKBgQDqW75gEDuiyaz9EfaO\nXliR+mgr9iLykyPv200LHMDOGCO2G3TaBW1hFyi/QDLpc/YOoPFNcoMjEkyjLsuq\nPdRfAAzascNRueeZJS1KC+I2I0qCrOE8nSxVPuR1U2fYEPqX3rBFBZ4amyD9H2aE\nwRCPZC4YJbBY2jWJZnePhGibewKBgQC5LXbS5yEkK44v0I6bEsV9lci1t2cMexj+\nwgDJbnugP0wSP8Gria/HoAcPwpWkpbgiodk7/YK74HmwHVvIpmmIiOQqZibQroNq\nOOG0bJogx5LU+KdwFp0HnOsB82+jhKDW1+UgXKbXTB8F7LeIizz0X/1ptvOBwwLW\nECKsIfcmSQKBgHHYN1a7C/08MwiMnVTzh9sB5XDVlIx55c8ynO50/UQgfdiM5eqz\nEDtF4MlnClRVvIXGsPGKWyHCVfA/XzhH6M5tW9Ew4UzmHhdK9AEwXKcn5Z4tFQ04\n3LxcXOaRqbRQKytzRfWBkRgjm5balhaPIthFNg8M3+mJttAUMqhJDffZAoGAYKuY\nXY+loIFQcCu7Vr9c9CvOpPbCyCQ3Lz/OM1oHFegVaW15SHjPmDI1nYeioVqWHxZJ\nFuVIa5ZLUKJy+PPPIiT8oBnF56lDF5/sTElpyPUG9UF9/6j+fyvvD4yrWjzxzlbU\n2akkvD6T737dbV3rC1RVMev9gV9xypiP0TbGFGkCgYEAtLeOWRWBVMPqGAXmY4iY\nh/MyTYvK1bLZGEGCfTudyRtN0YKEwnE8f3slD7X2x73spp4YpNP4ORj3HDGGxGiQ\nqII4pqNdHpon5HuCuGZnyx0u5xevO7GHsnL6x3CQi1IbXqF2Ep512y8yo1S/DD5E\nweIFyvvGeTwvWQkipIER490=\n-----END PRIVATE KEY-----"
@@ -36,7 +40,11 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       DATABASE_URL: postgresql+asyncpg://atlas:atlas@postgres:5432/atlas
-      OPENSEARCH_ENDPOINT: https://opensearch:9200
+      OPENSEARCH_ENDPOINT: "http://opensearch:9200"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+    AWS_ENDPOINT_URL: "http://localstack:4566"
       SQS_QUEUE_URL: http://localstack:4566/000000000000/docs-events
       JWT_AUDIENCE: '["atlas-api"]'
     depends_on:
