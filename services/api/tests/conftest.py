@@ -22,6 +22,9 @@ class _InMemoryRedis:
     def get(self, key: str) -> bytes | None:
         return self._store.get(key)
 
+    def exists(self, key: str) -> int:
+        return 1 if key in self._store else 0
+
 
 @pytest.fixture(scope="session")
 def client() -> TestClient:

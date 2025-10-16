@@ -2,18 +2,20 @@
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
+from redis import Redis
 
 from ..config import get_settings
 from ..db.models import User
-from ..deps import get_db
+from ..deps import CurrentUser, decode_token, get_current_user, get_db, get_redis
 from ..security.jwt import create_access_token, create_refresh_token
 from ..security.passwords import verify_password
 from ..security.ratelimit import init_rate_limiter
+from ..security.token_revocation import mark_token_revoked
 
 router = APIRouter()
 settings = get_settings()
@@ -29,6 +31,10 @@ class TokenPair(BaseModel):
     access: str
     refresh: str
     expires_at: datetime
+
+
+class LogoutRequest(BaseModel):
+    refresh: str | None = None
 
 
 @router.post("/login", response_model=TokenPair)
@@ -57,9 +63,42 @@ async def login(
     roles = [membership.role.value for membership in memberships]
     org_ids = [str(membership.org_id) for membership in memberships]
 
-    access_token = create_access_token(sub=str(user.id), email=user.email, roles=roles, organization_ids=org_ids)
-    refresh_token = create_refresh_token(sub=str(user.id))
+    access_token, _ = create_access_token(sub=str(user.id), email=user.email, roles=roles, organization_ids=org_ids)
+    refresh_token, _ = create_refresh_token(sub=str(user.id))
 
     expires_at = datetime.utcnow() + timedelta(minutes=settings.access_token_ttl_minutes)
 
     return TokenPair(access=access_token, refresh=refresh_token, expires_at=expires_at)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    request: Request,
+    payload: LogoutRequest | None = None,
+    _current_user: CurrentUser = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+) -> Response:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+
+    access_token = auth_header.split(" ", 1)[1].strip()
+    access_payload = decode_token(access_token)
+    access_jti = access_payload.get("jti")
+    access_exp = access_payload.get("exp")
+    if not access_jti or not access_exp:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid access token payload")
+    mark_token_revoked(redis, str(access_jti), int(access_exp))
+
+    if payload and payload.refresh:
+        try:
+            refresh_payload = decode_token(payload.refresh, expected_type="refresh")
+        except HTTPException as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid refresh token") from exc
+
+        refresh_jti = refresh_payload.get("jti")
+        refresh_exp = refresh_payload.get("exp")
+        if refresh_jti and refresh_exp:
+            mark_token_revoked(redis, str(refresh_jti), int(refresh_exp))
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

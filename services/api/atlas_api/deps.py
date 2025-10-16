@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from .config import get_settings
 from .db.models import Membership, RoleEnum, User
 from .observability.logging import bind_context
+from .security.token_revocation import is_token_revoked
 
 settings = get_settings()
 engine = create_async_engine(str(settings.database_url), pool_pre_ping=True)
@@ -44,38 +45,55 @@ def get_redis() -> Redis:
     return _redis_client
 
 
-async def get_current_user(
-    authorization: str = Header(..., convert_underscores=False),
-    session: AsyncSession = Depends(get_db),
-) -> CurrentUser:
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+def decode_token(token: str, *, expected_type: str | None = None) -> dict[str, Any]:
+    raw_audience = settings.jwt_audience
+    if isinstance(raw_audience, list | tuple | set):
+        audience = next(iter(raw_audience), None)
+    else:
+        audience = raw_audience
 
-    token = authorization.split(" ", 1)[1].strip()
+    decode_kwargs: dict[str, Any] = {
+        "algorithms": [settings.jwt_algorithm],
+    }
+    if audience:
+        decode_kwargs["audience"] = audience
+
     try:
-        raw_audience = settings.jwt_audience
-        if isinstance(raw_audience, list | tuple | set):
-            audience = next(iter(raw_audience), None)
-        else:
-            audience = raw_audience
-
-        decode_kwargs: dict[str, Any] = {
-            "algorithms": [settings.jwt_algorithm],
-        }
-        if audience:
-            decode_kwargs["audience"] = audience
-
         payload = jwt.decode(
             token,
             settings.jwt_public_key,
             **decode_kwargs,
         )
-    except JWTError as exc:  # pragma: no cover - jose já cobre mensagens de erro
+    except JWTError as exc:  # pragma: no cover - jose already handles detailed errors
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+
+    if expected_type and payload.get("token_type") != expected_type:
+        raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+
+    return payload
+
+
+async def get_current_user(
+    authorization: str = Header(..., convert_underscores=False),
+    session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+) -> CurrentUser:
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+
+    token = authorization.split(" ", 1)[1].strip()
+    payload = decode_token(token)
 
     subject = payload.get("sub")
     if subject is None:
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+
+    jti = payload.get("jti")
+    if not jti:
+        raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Token missing identifier")
+
+    if is_token_revoked(redis, str(jti)):
+        raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
 
     try:
         user_id = uuid.UUID(str(subject))
