@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 from urllib.parse import urlparse
 
 from opensearchpy import OpenSearch, RequestsHttpConnection
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError, TransportError
 
 from ..config import get_settings
 from .mappings import DOC_MAPPING
@@ -78,5 +80,15 @@ def delete_document(client: OpenSearch, index: str, document_id: str) -> None:
 def ensure_index_exists(client: OpenSearch, index: str) -> None:
     if getattr(client, "is_mock", False):  # pragma: no cover - caminho local de benchmark
         return
-    if not client.indices.exists(index=index):
-        client.indices.create(index=index, body=DOC_MAPPING)
+    # Wait for OpenSearch to become reachable instead of crashing on startup.
+    backoff_seconds = 1.0
+    for attempt in range(5):
+        try:
+            if not client.indices.exists(index=index):
+                client.indices.create(index=index, body=DOC_MAPPING)
+            return
+        except (OpenSearchConnectionError, TransportError):
+            if attempt == 4:
+                raise
+            time.sleep(backoff_seconds)
+            backoff_seconds *= 2

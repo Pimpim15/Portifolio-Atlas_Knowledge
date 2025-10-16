@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -29,6 +30,26 @@ _ALL_STATUSES: tuple[ReindexJobStatus, ...] = (
     ReindexJobStatus.FAILED,
 )
 
+_background_loop: asyncio.AbstractEventLoop | None = None
+_background_loop_lock = threading.Lock()
+
+
+def _ensure_background_loop() -> asyncio.AbstractEventLoop:
+    global _background_loop
+    with _background_loop_lock:
+        loop = _background_loop
+        if loop is None or loop.is_closed():
+            loop = asyncio.new_event_loop()
+
+            def _runner() -> None:
+                asyncio.set_event_loop(loop)
+                loop.run_forever()
+
+            thread = threading.Thread(target=_runner, name="reindex-fallback-loop", daemon=True)
+            thread.start()
+            _background_loop = loop
+        return loop
+
 
 async def _update_reindex_metrics(session: AsyncSession) -> None:
     job_counts_stmt: Select[tuple[ReindexJobStatus, int]] = (
@@ -39,6 +60,7 @@ async def _update_reindex_metrics(session: AsyncSession) -> None:
     job_counts: dict[ReindexJobStatus, int] = {status: 0 for status in _ALL_STATUSES}
     for status, count in jobs_result.all():
         job_counts[status] = int(count)
+
     for status in _ALL_STATUSES:
         REINDEX_JOB_STATUS.labels(status=status.value).set(job_counts[status])
 
@@ -50,6 +72,7 @@ async def _update_reindex_metrics(session: AsyncSession) -> None:
     item_counts: dict[ReindexJobStatus, int] = {status: 0 for status in _ALL_STATUSES}
     for status, count in items_result.all():
         item_counts[status] = int(count)
+
     for status in _ALL_STATUSES:
         REINDEX_JOB_ITEMS_STATUS.labels(status=status.value).set(item_counts[status])
 
@@ -77,13 +100,13 @@ def _run_async(coro: Awaitable[object]) -> object:
     try:
         running_loop = asyncio.get_running_loop()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
+        loop = _ensure_background_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
         try:
-            asyncio.set_event_loop(loop)
-            return loop.run_until_complete(coro)
-        finally:
-            asyncio.set_event_loop(None)
-            loop.close()
+            return future.result()
+        except Exception:  # pragma: no cover - logging only
+            logger.exception("reindex_async_background_failed")
+            raise
 
     task = running_loop.create_task(coro)
 
