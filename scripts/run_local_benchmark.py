@@ -7,6 +7,7 @@ Uso:
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 import subprocess
 import sys
 import time
@@ -18,6 +19,10 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _run_server() -> None:
+    os.environ.setdefault("OPENSEARCH_ENDPOINT", "http://127.0.0.1:9200")
+    os.environ.setdefault("OPENSEARCH_STUB", "1")
+    os.environ.setdefault("RATE_LIMIT_AUTH", "1000/minute")
+    os.environ.setdefault("RATE_LIMIT_DEFAULT", "1000/minute")
     import uvicorn
 
     uvicorn.run("services.api.atlas_api.main:app", host="127.0.0.1", port=8000, log_level="warning")
