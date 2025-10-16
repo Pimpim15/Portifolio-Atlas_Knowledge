@@ -165,6 +165,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
 
 - Runner Locust headless (`bench/run_headless.py`) gera automaticamente CSVs, resumo Markdown e aplica guardrails de tempo médio/erro.
 - Resultado de referência e checklist de execução: [`docs/performance.md`](docs/performance.md).
+- Histórico versionado em CSV via `scripts/bench_append_history.py` (`docs/performance-history.csv`).
 
 ## Segurança
 
@@ -187,7 +188,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Observabilidade ponta a ponta | Tracing, dashboards, alarmes e queries Log Insights versionadas; screenshots adicionadas à documentação. |
 | ✅ | Terraform com recursos reais | Infra concluída com rotação automática de segredos, controles de custo e outputs para observabilidade. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipelines multiambiente com approvals e redeploy ECS automatizado. |
-| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless e relatório de exemplo prontos; aguarda execução oficial e publicação. |
+| 🚧 | Benchmarks Locust/wrk com métricas publicadas | Runner headless e artefatos automáticos prontos; aguarda execução oficial e publicação dos resultados reais. |
 | ✅ | Screenshots/logs/dashboards no README | Evidências capturadas e linkadas em `docs/observability.md`. |
 
 ## Backlog priorizado para Product Ready

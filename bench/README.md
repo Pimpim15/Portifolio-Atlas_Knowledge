@@ -35,6 +35,7 @@ poetry run python bench/run_headless.py \
 - Consulte `bench/results/sample_report.md` para um exemplo de análise consolidada.
 - Ajuste `--max-avg-ms` e `--max-fail-rate` conforme os SLOs de cada ambiente.
 - Um resumo Markdown (`<prefix>_summary.md`) é gerado automaticamente com as métricas principais.
+- Para versionar resultados oficiais, utilize `poetry run python scripts/bench_append_history.py --summary <arquivo> --environment <env> --notes <texto>`.
 
 ### Execução interativa
 

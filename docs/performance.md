@@ -41,6 +41,19 @@ Após a execução, os seguintes artefatos estarão disponíveis em `bench/resul
 Inclua o arquivo de resumo em revisões de PR ou anexos de incident response para dar visibilidade às
 métricas coletadas.
 
+Para registrar o resultado no histórico versionado (`docs/performance-history.csv`), utilize o helper
+`scripts/bench_append_history.py`:
+
+```powershell
+poetry run python scripts/bench_append_history.py `
+  --summary bench/results/stage-202510151230_summary.md `
+  --environment stage `
+  --notes "Carga após otimização do índice"
+```
+
+O script cria o CSV caso não exista e appenda uma linha com as métricas principais, facilitando o
+acompanhamento longitudinal.
+
 ## Checklist de publicação
 
 1. Executar o teste no ambiente desejado.
