@@ -7,11 +7,12 @@ import json
 import time
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import]
 
-from services.api.atlas_api.config import get_settings
+from services.api.atlas_api.config import Settings, get_settings
 from services.api.atlas_api.observability.logging import (
     bind_context,
     configure_logging,
@@ -23,11 +24,13 @@ from services.api.atlas_api.observability.metrics import (
     WORKER_MESSAGE_AGE_SECONDS,
     WORKER_PROCESSING_ERRORS,
     WORKER_PROCESSING_LATENCY,
+    WORKER_RETRY_COUNT,
 )
 from services.api.atlas_api.observability.tracing import setup_tracing
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client
 from services.api.atlas_api.reindex.progress import (
     mark_job_item_error,
+    mark_job_item_retry,
     mark_job_item_started,
     mark_job_item_success,
 )
@@ -42,6 +45,7 @@ from services.api.atlas_api.search.os_client import (
 try:  # pragma: no cover - optional dependency
     from opentelemetry import context as otel_context  # type: ignore[import]
     from opentelemetry import trace  # type: ignore[import]
+    from opentelemetry.trace import Status, StatusCode  # type: ignore[import]
     from opentelemetry.trace.propagation.tracecontext import (  # type: ignore[import]
         TraceContextTextMapPropagator,
     )
@@ -49,9 +53,31 @@ except ImportError:  # pragma: no cover - optional dependency
     trace = None
     otel_context = None
     TraceContextTextMapPropagator = None
+    Status = None
+    StatusCode = None
 
 logger = get_logger(component="worker")
 TRACER = trace.get_tracer("atlas-worker") if trace else None
+
+
+@dataclass(slots=True)
+class ProcessingOutcome:
+    success: bool
+    action: str
+    job_id: uuid.UUID | None
+    job_item_id: uuid.UUID | None
+    error_message: str | None = None
+
+
+def _safe_uuid(value: Any) -> uuid.UUID | None:
+    if isinstance(value, uuid.UUID):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return uuid.UUID(value)
+        except ValueError:
+            return None
+    return None
 
 
 @contextlib.contextmanager
@@ -95,7 +121,13 @@ def _observe_message_age(attributes: dict[str, Any]) -> None:
     WORKER_MESSAGE_AGE_SECONDS.observe(age_seconds)
 
 
-def _process_message(body: dict[str, Any], client: Any) -> None:
+def _process_message(
+    body: dict[str, Any],
+    client: Any,
+    *,
+    attempt: int,
+    max_attempts: int,
+) -> ProcessingOutcome:
     action = body.get("action")
     action_label = str(action or "unknown")
     document = body.get("document") if isinstance(body.get("document"), dict) else None
@@ -104,24 +136,6 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
         document_id = document.get("id")
     elif body.get("document_id"):
         document_id = body["document_id"]
-
-    span_cm = (
-        TRACER.start_as_current_span(
-            "worker.process_message",
-            attributes={
-                "atlas.worker.action": action_label,
-                "atlas.worker.job_id": body.get("job_id"),
-                "atlas.worker.job_item_id": body.get("job_item_id"),
-                "atlas.worker.document_id": document_id,
-            },
-        )
-        if TRACER
-        else contextlib.nullcontext()
-    )
-
-    start = time.perf_counter()
-    success = False
-    error_message: str | None = None
 
     job_uuid: uuid.UUID | None = None
     job_item_uuid: uuid.UUID | None = None
@@ -145,9 +159,31 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
         except ValueError:
             logger.warning("worker_invalid_job_item_id", job_item_id=job_item_id_raw)
 
-    job_context = job_uuid is not None and job_item_uuid is not None
+    span_cm = (
+        TRACER.start_as_current_span(
+            "worker.process_message",
+            attributes={
+                "atlas.worker.action": action_label,
+                "atlas.worker.job_id": str(job_uuid) if job_uuid else None,
+                "atlas.worker.job_item_id": str(job_item_uuid) if job_item_uuid else None,
+                "atlas.worker.document_id": document_id,
+            },
+        )
+        if TRACER
+        else contextlib.nullcontext()
+    )
 
-    with span_cm:
+    start = time.perf_counter()
+    success = False
+    error_message: str | None = None
+
+    with span_cm as span:
+        if span is not None:
+            span.set_attribute("atlas.worker.attempt", attempt)
+            span.set_attribute("atlas.worker.max_attempts", max_attempts)
+
+        job_context = job_uuid is not None and job_item_uuid is not None
+
         if job_context:
             try:
                 mark_job_item_started(job_uuid, job_item_uuid)
@@ -160,16 +196,10 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
 
         if action == "index":
             if document is None:
-                logger.warning(
-                    "worker_invalid_document_payload",
-                    payload=body,
-                )
+                logger.warning("worker_invalid_document_payload", payload=body)
                 error_message = "invalid_document_payload"
             elif not document_id:
-                logger.warning(
-                    "worker_missing_document_id",
-                    payload=document,
-                )
+                logger.warning("worker_missing_document_id", payload=document)
                 error_message = "missing_document_id"
             else:
                 try:
@@ -187,10 +217,7 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
                     success = True
         elif action == "delete":
             if not document_id:
-                logger.warning(
-                    "worker_missing_document_id_delete",
-                    payload=body,
-                )
+                logger.warning("worker_missing_document_id_delete", payload=body)
                 error_message = "missing_document_id"
             else:
                 try:
@@ -205,20 +232,23 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
                     WORKER_ACTION_COUNT.labels(action="delete").inc()
                     success = True
         else:
-            logger.warning(
-                "worker_unknown_action",
-                action=action,
-            )
+            logger.warning("worker_unknown_action", action=action)
             WORKER_ACTION_COUNT.labels(action=action_label).inc()
             error_message = "unknown_action"
 
-    elapsed = time.perf_counter() - start
-    WORKER_PROCESSING_LATENCY.labels(action_label).observe(elapsed)
-    if not success:
-        WORKER_PROCESSING_ERRORS.labels(action_label).inc()
+        if span is not None:
+            span.set_attribute("atlas.worker.success", success)
+            if not success and error_message:
+                if Status is not None and StatusCode is not None:  # pragma: no cover - optional instrumentation
+                    span.set_status(Status(StatusCode.ERROR, description=error_message))
+                span.add_event(
+                    "worker.failure",
+                    {
+                        "atlas.worker.reason": error_message,
+                    },
+                )
 
-    if job_context:
-        if success:
+        if job_context and success:
             try:
                 mark_job_item_success(job_uuid, job_item_uuid)
             except Exception:  # pragma: no cover - defensive logging
@@ -227,21 +257,24 @@ def _process_message(body: dict[str, Any], client: Any) -> None:
                     job_id=str(job_uuid),
                     job_item_id=str(job_item_uuid),
                 )
-        else:
-            failure_reason = error_message or "worker_processing_failed"
-            try:
-                mark_job_item_error(job_uuid, job_item_uuid, failure_reason)
-            except Exception:  # pragma: no cover - defensive logging
-                logger.exception(
-                    "worker_mark_job_item_error_failed",
-                    job_id=str(job_uuid),
-                    job_item_id=str(job_item_uuid),
-                    failure_reason=failure_reason,
-                )
+
+    elapsed = time.perf_counter() - start
+    WORKER_PROCESSING_LATENCY.labels(action_label).observe(elapsed)
+    if not success:
+        WORKER_PROCESSING_ERRORS.labels(action_label).inc()
+
+    return ProcessingOutcome(
+        success=success,
+        action=action_label,
+        job_id=job_uuid,
+        job_item_id=job_item_uuid,
+        error_message=error_message,
+    )
 
 
 def _handle_message(
     *,
+    settings: Settings,
     client: Any,
     queue_url: str,
     os_client: Any,
@@ -249,31 +282,100 @@ def _handle_message(
     payload: dict[str, Any],
     receipt_handle: str,
 ) -> None:
-    try:
-        _observe_message_age(message.get("Attributes", {}))
+    attributes = message.get("Attributes", {})
+    _observe_message_age(attributes)
 
-        with _attach_trace_from_message_attributes(message.get("MessageAttributes", {})):
-            bind_context(
-                message_id=message.get("MessageId"),
-                receipt_handle=receipt_handle,
-                queue_url=queue_url,
-            )
-            try:
-                _process_message(payload, os_client)
-            finally:
-                unbind_context("message_id", "receipt_handle", "queue_url")
-    except Exception:  # pragma: no cover - processing failure
-        logger.exception(
-            "worker_processing_failed",
-            payload=payload,
+    attempt_raw = attributes.get("ApproximateReceiveCount", "1")
+    try:
+        attempt = max(1, int(attempt_raw))
+    except (TypeError, ValueError):
+        attempt = 1
+
+    max_attempts = max(1, getattr(settings, "worker_max_attempts", 5))
+
+    with _attach_trace_from_message_attributes(message.get("MessageAttributes", {})):
+        bind_context(
+            message_id=message.get("MessageId"),
+            receipt_handle=receipt_handle,
+            queue_url=queue_url,
+            attempt=attempt,
         )
-    finally:
+        try:
+            outcome = _process_message(
+                payload,
+                os_client,
+                attempt=attempt,
+                max_attempts=max_attempts,
+            )
+        except Exception as exc:  # pragma: no cover - processing failure
+            logger.exception("worker_processing_failed", payload=payload)
+            action_label = str(payload.get("action") or "unknown")
+            WORKER_PROCESSING_ERRORS.labels(action_label).inc()
+            outcome = ProcessingOutcome(
+                success=False,
+                action=action_label,
+                job_id=_safe_uuid(payload.get("job_id")),
+                job_item_id=_safe_uuid(payload.get("job_item_id")),
+                error_message=str(exc),
+            )
+        finally:
+            unbind_context("message_id", "receipt_handle", "queue_url", "attempt")
+
+    if outcome.success:
         try:
             client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
         except (BotoCoreError, ClientError):  # pragma: no cover
+            logger.exception("sqs_delete_failed", payload=payload)
+        return
+
+    failure_reason = outcome.error_message or "worker_processing_failed"
+
+    if attempt >= max_attempts:
+        if outcome.job_id and outcome.job_item_id:
+            try:
+                mark_job_item_error(outcome.job_id, outcome.job_item_id, failure_reason)
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception(
+                    "worker_mark_job_item_error_failed",
+                    job_id=str(outcome.job_id),
+                    job_item_id=str(outcome.job_item_id),
+                    failure_reason=failure_reason,
+                )
+        try:
+            client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+        except (BotoCoreError, ClientError):  # pragma: no cover
+            logger.exception("sqs_delete_failed", payload=payload)
+        return
+
+    backoff_seconds = getattr(settings, "worker_retry_backoff_seconds", 30)
+    max_backoff_seconds = getattr(settings, "worker_retry_backoff_max_seconds", 300)
+    visibility_timeout = max(1, min(backoff_seconds * attempt, max_backoff_seconds))
+
+    try:
+        client.change_message_visibility(
+            QueueUrl=queue_url,
+            ReceiptHandle=receipt_handle,
+            VisibilityTimeout=int(visibility_timeout),
+        )
+    except (BotoCoreError, ClientError):  # pragma: no cover - infra failure
+        logger.exception(
+            "sqs_change_visibility_failed",
+            payload=payload,
+            attempt=attempt,
+            visibility_timeout=visibility_timeout,
+        )
+    else:
+        WORKER_RETRY_COUNT.labels(outcome.action).inc()
+
+    if outcome.job_id and outcome.job_item_id:
+        try:
+            mark_job_item_retry(outcome.job_id, outcome.job_item_id, failure_reason)
+        except Exception:  # pragma: no cover - defensive logging
             logger.exception(
-                "sqs_delete_failed",
-                payload=payload,
+                "worker_mark_job_item_retry_failed",
+                job_id=str(outcome.job_id),
+                job_item_id=str(outcome.job_item_id),
+                failure_reason=failure_reason,
             )
 
 
@@ -297,7 +399,7 @@ def _poll_loop() -> None:
                 WaitTimeSeconds=20,
                 VisibilityTimeout=60,
                 MessageAttributeNames=["All"],
-                AttributeNames=["SentTimestamp"],
+                AttributeNames=["SentTimestamp", "ApproximateReceiveCount"],
             )
         except (BotoCoreError, ClientError) as exc:  # pragma: no cover - runtime failure
             logger.exception(
@@ -332,6 +434,7 @@ def _poll_loop() -> None:
                 continue
 
             _handle_message(
+                settings=settings,
                 client=client,
                 queue_url=settings.sqs_queue_url,
                 os_client=os_client,

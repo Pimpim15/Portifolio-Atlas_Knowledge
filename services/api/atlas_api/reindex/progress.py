@@ -244,6 +244,27 @@ async def _mark_job_item_error_async(job_id: uuid.UUID, job_item_id: uuid.UUID, 
     await _with_session(_handler)
 
 
+async def _mark_job_item_retry_async(job_id: uuid.UUID, job_item_id: uuid.UUID, error_message: str) -> None:
+    async def _handler(session: AsyncSession) -> None:
+        item = await _load_job_item(session, job_id, job_item_id)
+        if item is None:
+            return
+
+        item.status = ReindexJobStatus.PENDING
+        item.error_message = error_message
+
+        job = await session.get(ReindexJob, job_id)
+        if job is not None:
+            await _refresh_processed_count(session, job)
+            if job.status != ReindexJobStatus.FAILED:
+                job.status = ReindexJobStatus.RUNNING
+
+        await session.commit()
+        await _update_reindex_metrics(session)
+
+    await _with_session(_handler)
+
+
 def mark_job_item_started(job_id: uuid.UUID | str, job_item_id: uuid.UUID | str) -> None:
     job_uuid = _normalize_uuid(job_id)
     item_uuid = _normalize_uuid(job_item_id)
@@ -260,3 +281,9 @@ def mark_job_item_error(job_id: uuid.UUID | str, job_item_id: uuid.UUID | str, e
     job_uuid = _normalize_uuid(job_id)
     item_uuid = _normalize_uuid(job_item_id)
     _run_async(_mark_job_item_error_async(job_uuid, item_uuid, error_message))
+
+
+def mark_job_item_retry(job_id: uuid.UUID | str, job_item_id: uuid.UUID | str, error_message: str) -> None:
+    job_uuid = _normalize_uuid(job_id)
+    item_uuid = _normalize_uuid(job_item_id)
+    _run_async(_mark_job_item_retry_async(job_uuid, item_uuid, error_message))

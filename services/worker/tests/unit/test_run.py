@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from types import SimpleNamespace
 from typing import Any
 
@@ -13,6 +14,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
+from services.api.atlas_api.config import Settings
 from services.worker.atlas_worker import run
 
 
@@ -38,9 +40,11 @@ def test_process_message_index(monkeypatch: pytest.MonkeyPatch, fake_os_client: 
         },
     }
 
-    run._process_message(body, fake_os_client)
+    outcome = run._process_message(body, fake_os_client, attempt=1, max_attempts=5)
 
     assert calls == [("123", body["document"])]
+    assert outcome.success is True
+    assert outcome.action == "index"
 
 
 def test_process_message_delete(monkeypatch: pytest.MonkeyPatch, fake_os_client: dict[str, Any]) -> None:
@@ -56,9 +60,11 @@ def test_process_message_delete(monkeypatch: pytest.MonkeyPatch, fake_os_client:
         "document_id": "abc",
     }
 
-    run._process_message(body, fake_os_client)
+    outcome = run._process_message(body, fake_os_client, attempt=1, max_attempts=5)
 
     assert calls == ["abc"]
+    assert outcome.success is True
+    assert outcome.action == "delete"
 
 
 def test_process_message_invalid_document(caplog: pytest.LogCaptureFixture, fake_os_client: dict[str, Any]) -> None:
@@ -67,14 +73,18 @@ def test_process_message_invalid_document(caplog: pytest.LogCaptureFixture, fake
         "document": None,
     }
 
-    run._process_message(body, fake_os_client)
+    outcome = run._process_message(body, fake_os_client, attempt=1, max_attempts=5)
 
+    assert outcome.success is False
+    assert outcome.error_message == "invalid_document_payload"
     assert any("worker_invalid_document_payload" in record.message for record in caplog.records)
 
 
 def test_process_message_unknown_action(caplog: pytest.LogCaptureFixture, fake_os_client: dict[str, Any]) -> None:
-    run._process_message({"action": "noop"}, fake_os_client)
+    outcome = run._process_message({"action": "noop"}, fake_os_client, attempt=1, max_attempts=5)
 
+    assert outcome.success is False
+    assert outcome.error_message == "unknown_action"
     assert any("worker_unknown_action" in record.message for record in caplog.records)
 
 
@@ -96,9 +106,23 @@ def test_handle_message_observes_age_and_reuses_trace(
 
     contexts: list[Any] = []
 
-    def fake_process_message(body: dict[str, Any], client: Any) -> None:  # noqa: ANN401
+    def fake_process_message(
+        body: dict[str, Any],
+        client: Any,
+        *,
+        attempt: int,
+        max_attempts: int,
+    ) -> run.ProcessingOutcome:  # noqa: ANN401
         span = trace.get_current_span()
         contexts.append(span.get_span_context())
+        assert attempt == 1
+        assert max_attempts == 3
+        return run.ProcessingOutcome(
+            success=True,
+            action=str(body.get("action") or "unknown"),
+            job_id=None,
+            job_item_id=None,
+        )
 
     monkeypatch.setattr(run, "_process_message", fake_process_message)
 
@@ -110,6 +134,11 @@ def test_handle_message_observes_age_and_reuses_trace(
             self.deleted = True
 
     client = FakeClient()
+    settings = Settings(
+        WORKER_MAX_ATTEMPTS=3,
+        WORKER_RETRY_BACKOFF_SECONDS=10,
+        WORKER_RETRY_BACKOFF_MAX_SECONDS=60,
+    )
 
     tracer = trace.get_tracer("producer")
     carrier: dict[str, str] = {}
@@ -124,11 +153,15 @@ def test_handle_message_observes_age_and_reuses_trace(
         "MessageAttributes": {
             key: {"StringValue": value, "DataType": "String"} for key, value in carrier.items()
         },
-        "Attributes": {"SentTimestamp": str(sent_timestamp_ms)},
+        "Attributes": {
+            "SentTimestamp": str(sent_timestamp_ms),
+            "ApproximateReceiveCount": "1",
+        },
     }
     payload = {"action": "index", "document": {"id": "1"}}
 
     run._handle_message(
+        settings=settings,
         client=client,
         queue_url="https://queue",
         os_client=fake_os_client,
@@ -140,3 +173,191 @@ def test_handle_message_observes_age_and_reuses_trace(
     assert client.deleted is True
     assert observed and pytest.approx(observed[0], rel=0.2, abs=0.5) == 1
     assert contexts and contexts[0].trace_id == producer_context.trace_id
+
+
+def test_handle_message_retries_with_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    job_item_id = uuid.uuid4()
+
+    def fake_process_message(
+        body: dict[str, Any],
+        client: Any,
+        *,
+        attempt: int,
+        max_attempts: int,
+    ) -> run.ProcessingOutcome:  # noqa: ANN401
+        assert attempt == 2
+        assert max_attempts == 5
+        return run.ProcessingOutcome(
+            success=False,
+            action="index",
+            job_id=job_id,
+            job_item_id=job_item_id,
+            error_message="boom",
+        )
+
+    monkeypatch.setattr(run, "_process_message", fake_process_message)
+
+    class CounterStub:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def labels(self, action: str) -> SimpleNamespace:
+            self.calls.append(action)
+            return SimpleNamespace(inc=lambda: self.calls.append(f"{action}_inc"))
+
+    retry_counter = CounterStub()
+    monkeypatch.setattr(run, "WORKER_RETRY_COUNT", retry_counter)
+
+    retry_marks: list[tuple[uuid.UUID, uuid.UUID, str]] = []
+    monkeypatch.setattr(
+        run,
+        "mark_job_item_retry",
+        lambda job, item, reason: retry_marks.append((job, item, reason)),
+    )
+
+    delete_called = False
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.visibility: list[dict[str, Any]] = []
+
+        def change_message_visibility(self, **kwargs: Any) -> None:  # noqa: ANN401
+            self.visibility.append(kwargs)
+
+        def delete_message(self, **_kwargs: Any) -> None:  # noqa: ANN401
+            nonlocal delete_called
+            delete_called = True
+
+    client = FakeClient()
+    settings = Settings(
+        WORKER_MAX_ATTEMPTS=5,
+        WORKER_RETRY_BACKOFF_SECONDS=30,
+        WORKER_RETRY_BACKOFF_MAX_SECONDS=120,
+    )
+    sent_timestamp_ms = int(time.time() * 1000)
+    message = {
+        "MessageId": "retry",
+        "ReceiptHandle": "handle",
+        "MessageAttributes": {},
+        "Attributes": {
+            "SentTimestamp": str(sent_timestamp_ms),
+            "ApproximateReceiveCount": "2",
+        },
+    }
+    payload = {
+        "action": "index",
+        "document": {"id": "doc"},
+        "job_id": str(job_id),
+        "job_item_id": str(job_item_id),
+    }
+
+    run._handle_message(
+        settings=settings,
+        client=client,
+        queue_url="https://queue",
+        os_client={},
+        message=message,
+        payload=payload,
+        receipt_handle="handle",
+    )
+
+    assert delete_called is False
+    assert client.visibility and client.visibility[0]["VisibilityTimeout"] == 60
+    assert retry_counter.calls == ["index", "index_inc"]
+    assert retry_marks == [(job_id, job_item_id, "boom")]
+
+
+def test_handle_message_marks_error_after_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    job_item_id = uuid.uuid4()
+
+    def fake_process_message(
+        body: dict[str, Any],
+        client: Any,
+        *,
+        attempt: int,
+        max_attempts: int,
+    ) -> run.ProcessingOutcome:  # noqa: ANN401
+        assert attempt == 3
+        assert max_attempts == 3
+        return run.ProcessingOutcome(
+            success=False,
+            action="index",
+            job_id=job_id,
+            job_item_id=job_item_id,
+            error_message="boom",
+        )
+
+    monkeypatch.setattr(run, "_process_message", fake_process_message)
+
+    error_marks: list[tuple[uuid.UUID, uuid.UUID, str]] = []
+    monkeypatch.setattr(
+        run,
+        "mark_job_item_error",
+        lambda job, item, reason: error_marks.append((job, item, reason)),
+    )
+    def fail_retry(*_args: Any, **_kwargs: Any) -> None:  # noqa: ANN401
+        raise AssertionError("retry should not be called")
+
+    monkeypatch.setattr(run, "mark_job_item_retry", fail_retry)
+
+    class CounterStub:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def labels(self, action: str) -> SimpleNamespace:
+            self.calls.append(action)
+            return SimpleNamespace(inc=lambda: self.calls.append(f"{action}_inc"))
+
+    retry_counter = CounterStub()
+    monkeypatch.setattr(run, "WORKER_RETRY_COUNT", retry_counter)
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.deleted = False
+            self.visibility_called = False
+
+        def delete_message(self, **_kwargs: Any) -> None:  # noqa: ANN401
+            self.deleted = True
+
+        def change_message_visibility(self, **_kwargs: Any) -> None:  # noqa: ANN401
+            self.visibility_called = True
+
+    client = FakeClient()
+    settings = Settings(
+        WORKER_MAX_ATTEMPTS=3,
+        WORKER_RETRY_BACKOFF_SECONDS=30,
+        WORKER_RETRY_BACKOFF_MAX_SECONDS=120,
+    )
+    sent_timestamp_ms = int(time.time() * 1000)
+    message = {
+        "MessageId": "fail",
+        "ReceiptHandle": "handle",
+        "MessageAttributes": {},
+        "Attributes": {
+            "SentTimestamp": str(sent_timestamp_ms),
+            "ApproximateReceiveCount": "3",
+        },
+    }
+    payload = {
+        "action": "index",
+        "document": {"id": "doc"},
+        "job_id": str(job_id),
+        "job_item_id": str(job_item_id),
+    }
+
+    run._handle_message(
+        settings=settings,
+        client=client,
+        queue_url="https://queue",
+        os_client={},
+        message=message,
+        payload=payload,
+        receipt_handle="handle",
+    )
+
+    assert client.deleted is True
+    assert client.visibility_called is False
+    assert error_marks == [(job_id, job_item_id, "boom")]
+    assert retry_counter.calls == []

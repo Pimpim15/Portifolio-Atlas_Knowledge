@@ -52,3 +52,8 @@ WORKER_MESSAGE_AGE_SECONDS = Histogram(
 	"atlas_worker_message_age_seconds",
 	"Tempo em segundos entre o envio e o processamento de mensagens no worker",
 )
+WORKER_RETRY_COUNT = Counter(
+	"atlas_worker_retry_total",
+	"Total de tentativas de retry ao processar mensagens",
+	["action"],
+)
