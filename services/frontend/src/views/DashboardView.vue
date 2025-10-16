@@ -8,6 +8,7 @@
       </div>
       <div class="dashboard__actions">
         <button v-if="canManageDocs" class="btn btn-secondary" @click="openCreateModal">Novo documento</button>
+        <RouterLink class="btn btn-ghost" to="/analytics">Insights</RouterLink>
         <button class="btn btn-ghost" @click="handleLogout">Sair</button>
       </div>
     </header>
@@ -140,7 +141,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import Modal from '../components/Modal.vue';
 import ReindexPanel from '../components/ReindexPanel.vue';
 import api from '../utils/api';

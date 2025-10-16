@@ -3,9 +3,10 @@
 import base64
 import binascii
 import uuid
+from collections import Counter
 from collections.abc import Sequence
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -14,7 +15,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..db.models import Document, DocumentVersion, ReindexJob, ReindexJobItem, ReindexJobStatus
+from ..db.models import Document, DocumentVersion, ReindexJob, ReindexJobItem, ReindexJobStatus, User
 from ..deps import CurrentUser, RBACGuard, get_db, get_redis
 from ..observability.logging import get_logger
 from ..observability.metrics import REINDEX_JOB_COUNT, REINDEX_JOB_LATENCY
@@ -258,6 +259,46 @@ class ReindexJobItemsPage(BaseModel):
     next_cursor: str | None
 
 
+class DocumentStatsTotals(BaseModel):
+    documents: int
+    versions: int
+    unique_tags: int
+    active_authors: int
+    avg_tags_per_document: float
+
+
+class DocumentStatsTag(BaseModel):
+    tag: str
+    count: int
+
+
+class DocumentStatsAuthor(BaseModel):
+    author_id: uuid.UUID | None
+    display_name: str
+    count: int
+
+
+class DocumentStatsSeriesPoint(BaseModel):
+    date: date
+    count: int
+
+
+class DocumentStatsRecentDocument(BaseModel):
+    id: uuid.UUID
+    title: str
+    created_at: datetime
+    tags: list[str]
+    author: str | None
+
+
+class DocumentStatsResponse(BaseModel):
+    totals: DocumentStatsTotals
+    top_tags: list[DocumentStatsTag]
+    top_authors: list[DocumentStatsAuthor]
+    documents_by_day: list[DocumentStatsSeriesPoint]
+    recent_documents: list[DocumentStatsRecentDocument]
+
+
 @router.post("/reindex", response_model=ReindexJobOut, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit(settings.rate_limit_mutation)
 async def trigger_reindex(
@@ -462,6 +503,125 @@ async def list_reindex_job_items(
             span.set_attribute("atlas.reindex.has_more", has_more)
 
         return payload
+
+
+@router.get("/stats", response_model=DocumentStatsResponse)
+@limiter.limit(settings.rate_limit_default)
+async def get_documents_stats(
+    current_user: CurrentUser = Depends(RBACGuard(["viewer", "editor", "admin"])),
+    session: AsyncSession = Depends(get_db),
+) -> DocumentStatsResponse:
+    docs_stmt = (
+        select(Document)
+        .where(
+            Document.org_id.in_(current_user.organization_ids),
+            Document.deleted_at.is_(None),
+        )
+        .order_by(Document.created_at.desc())
+    )
+    docs_result = await session.execute(docs_stmt)
+    documents = docs_result.scalars().all()
+
+    total_docs = len(documents)
+    tag_counter: Counter[str] = Counter()
+    author_counter: Counter[uuid.UUID | None] = Counter()
+    series_counter: Counter[date] = Counter()
+
+    today = date.today()
+    start_date = today - timedelta(days=29)
+
+    for doc in documents:
+        tags = doc.tags or []
+        tag_counter.update(tags)
+        author_counter.update([doc.created_by])
+        created_day = doc.created_at.date()
+        if created_day >= start_date:
+            series_counter.update([created_day])
+
+    unique_tags = len(tag_counter)
+    active_authors_ids = {author_id for author_id in author_counter if author_id is not None}
+
+    versions_stmt = (
+        select(func.count(DocumentVersion.id))
+        .join(Document, DocumentVersion.document_id == Document.id)
+        .where(
+            Document.org_id.in_(current_user.organization_ids),
+            Document.deleted_at.is_(None),
+        )
+    )
+    versions_result = await session.execute(versions_stmt)
+    total_versions = int(versions_result.scalar_one() or 0)
+
+    avg_tags_per_doc = 0.0
+    if total_docs:
+        avg_tags_per_doc = round(sum(len(doc.tags or []) for doc in documents) / total_docs, 2)
+
+    users_map: dict[uuid.UUID, str] = {}
+    if active_authors_ids:
+        users_stmt = select(User.id, User.email).where(User.id.in_(active_authors_ids))
+        users_result = await session.execute(users_stmt)
+        users_map = {row.id: row.email for row in users_result}
+
+    top_tags = [
+        DocumentStatsTag(tag=tag, count=count)
+        for tag, count in tag_counter.most_common(8)
+    ]
+
+    def _author_label(author_id: uuid.UUID | None) -> str:
+        if author_id is None:
+            return "Desconhecido"
+        return users_map.get(author_id, "Desconhecido")
+
+    sorted_authors = sorted(
+        (
+            (author_id, count)
+            for author_id, count in author_counter.items()
+            if count > 0
+        ),
+        key=lambda item: (item[1], _author_label(item[0])),
+        reverse=True,
+    )
+
+    top_authors = [
+        DocumentStatsAuthor(
+            author_id=author_id,
+            display_name=_author_label(author_id),
+            count=count,
+        )
+        for author_id, count in sorted_authors[:8]
+    ]
+
+    series = [
+        DocumentStatsSeriesPoint(date=day, count=series_counter.get(day, 0))
+        for day in (start_date + timedelta(days=offset) for offset in range(0, 30))
+    ]
+
+    recent_documents = [
+        DocumentStatsRecentDocument(
+            id=doc.id,
+            title=doc.title,
+            created_at=doc.created_at,
+            tags=doc.tags or [],
+            author=_author_label(doc.created_by),
+        )
+        for doc in documents[:5]
+    ]
+
+    totals = DocumentStatsTotals(
+        documents=total_docs,
+        versions=total_versions,
+        unique_tags=unique_tags,
+        active_authors=len(active_authors_ids),
+        avg_tags_per_document=avg_tags_per_doc,
+    )
+
+    return DocumentStatsResponse(
+        totals=totals,
+        top_tags=top_tags,
+        top_authors=top_authors,
+        documents_by_day=series,
+        recent_documents=recent_documents,
+    )
 
 
 @router.get("/{doc_id}", response_model=DocumentOut)
