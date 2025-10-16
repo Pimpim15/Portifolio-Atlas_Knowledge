@@ -94,7 +94,7 @@ jobs:
         shell: bash
         run: |
           for attempt in {1..30}; do
-            if curl -sSf "${LOCUST_HOST}/health" > /dev/null; then
+            if curl -sSf "${LOCUST_HOST}/healthz" > /dev/null; then
               exit 0
             fi
             echo "Aguardando API... tentativa ${attempt}";
@@ -109,7 +109,9 @@ jobs:
             --users 5 \
             --spawn-rate 2 \
             --run-time 1m \
-            --prefix pr-smoke
+            --prefix pr-smoke \
+            --max-avg-ms 1500 \
+            --max-fail-rate 0.01
       - name: Publica resultados do Locust
         if: always()
         uses: actions/upload-artifact@v4

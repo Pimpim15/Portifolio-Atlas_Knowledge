@@ -21,11 +21,19 @@ locust -f bench/locustfile.py --headless --users 10 --spawn-rate 2 --run-time 5m
 ### Runner automatizado
 
 ```bash
-poetry run python bench/run_headless.py --host https://atlas.stage.example.com --users 50 --spawn-rate 5 --run-time 5m --prefix stage-$(date +%Y%m%d%H%M)
+poetry run python bench/run_headless.py \
+	--host https://atlas.stage.example.com \
+	--users 50 \
+	--spawn-rate 5 \
+	--run-time 5m \
+	--prefix stage-$(date +%Y%m%d%H%M) \
+	--max-avg-ms 1500 \
+	--max-fail-rate 0.01
 ```
 
 - Os CSVs e gráficos serão armazenados em `bench/results/<prefix>*`.
 - Consulte `bench/results/sample_report.md` para um exemplo de análise consolidada.
+- Ajuste `--max-avg-ms` e `--max-fail-rate` conforme os SLOs de cada ambiente.
 
 ### Execução interativa
 
@@ -52,6 +60,6 @@ wrk -t4 -c128 -d60s https://atlas.dev.example.com/health
 
 ## Próximos passos sugeridos
 
-- ✅ Smoke test Locust integrado ao pipeline de PR (`.github/workflows/pr.yml` → job `locust-smoke`).
+- ✅ Smoke test Locust integrado ao pipeline de PR (`.github/workflows/pr.yml` → job `locust-smoke`) com guardrails de 1.5s/1%.
 - Adicionar cenários que publiquem documentos em lote antes das consultas.
 - Armazenar artefatos com os relatórios de teste para comparação histórica.
