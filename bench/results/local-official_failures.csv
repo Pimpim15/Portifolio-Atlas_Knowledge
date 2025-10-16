@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+POST,/auth/login,HTTPError('429 Client Error: Too Many Requests for url: /auth/login'),9
