@@ -23,7 +23,7 @@ format:
 	npm --prefix services/frontend run format
 
 test:
-	poetry run pytest services/api/tests --cov=atlas_api --cov-report=term-missing
+	poetry run pytest services/api/tests --cov=services.api.atlas_api --cov-report=term-missing
 
 migrate:
 	poetry run alembic -c services/api/alembic.ini upgrade head

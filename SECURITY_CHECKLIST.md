@@ -3,7 +3,7 @@
 ## Autenticação & Autorização
 - [x] JWT RS256 com chaves armazenadas no AWS Secrets Manager / KMS.
 - [x] TTL curto para access token (≤15 min) e refresh token (≤7 dias).
-- [ ] Revogação / blacklist via `jti` (Redis) para sessões críticas.
+- [x] Revogação / blacklist via `jti` (Redis) para sessões críticas.
 - [x] RBAC por organização (admin/editor/viewer) aplicado em todas as rotas.
 - [ ] MFA opcional para perfis administrativos.
 

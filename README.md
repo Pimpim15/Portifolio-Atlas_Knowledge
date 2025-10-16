@@ -9,7 +9,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 
 ### ✅ Entregue
 
-- API FastAPI com autenticação JWT RS256, RBAC por organização e rotas principais (`/auth`, `/users`, `/docs`, `/search`) com _fallback_ para PostgreSQL.
+- API FastAPI com autenticação JWT RS256, revogação de tokens (`/auth/logout` com blacklist Redis), RBAC por organização e rotas principais (`/auth`, `/users`, `/docs`, `/search`) com _fallback_ para PostgreSQL.
 - Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
   - Dashboard Grafana pronto (`infra/grafana/reindex-dashboard.json`) com visão operacional dos jobs/itens e tendências por hora.
@@ -106,17 +106,22 @@ make dev
 ### Validando a API ponta a ponta
 
 ```powershell
-# 1. Autentique-se e capture o token
-$token = (Invoke-RestMethod -Method Post -Uri http://localhost:8000/auth/login -Body (@{ email = 'admin@acme.com'; password = 'admin' } | ConvertTo-Json) -ContentType 'application/json').access
+# 1. Autentique-se e capture os tokens
+$response = Invoke-RestMethod -Method Post -Uri http://localhost:8000/auth/login -Body (@{ email = 'admin@acme.com'; password = 'admin' } | ConvertTo-Json) -ContentType 'application/json'
+$accessToken = $response.access
+$refreshToken = $response.refresh
 
 # 2. Consulte o perfil autenticado
-Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/users/me' -Headers @{ Authorization = "Bearer $token" }
+Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/users/me' -Headers @{ Authorization = "Bearer $accessToken" }
 
 # 3. Busque documentos (com ou sem filtros de tags)
-Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/search?q=runbook&tags=incidentes' -Headers @{ Authorization = "Bearer $token" }
+Invoke-RestMethod -Method Get -Uri 'http://localhost:8000/search?q=runbook&tags=incidentes' -Headers @{ Authorization = "Bearer $accessToken" }
 
 # 4. Crie um novo documento
-Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Authorization = "Bearer $token" } -Body (@{ title = 'Checklist de DR'; body = 'Passo a passo de recuperação'; tags = @('dr','contingência') } | ConvertTo-Json) -ContentType 'application/json'
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Authorization = "Bearer $accessToken" } -Body (@{ title = 'Checklist de DR'; body = 'Passo a passo de recuperação'; tags = @('dr','contingência') } | ConvertTo-Json) -ContentType 'application/json'
+
+# 5. Finalize a sessão (revoga access/refresh e exige novo login)
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/auth/logout' -Headers @{ Authorization = "Bearer $accessToken" } -Body (@{ refresh = $refreshToken } | ConvertTo-Json) -ContentType 'application/json'
 ```
 
 > Dica: também é possível explorar tudo via Swagger em http://localhost:8000/docs.
@@ -173,6 +178,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
 Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). Destaques:
 
 - JWT RS256, chaves em AWS Secrets Manager.
+- Revogação de tokens com Redis (`jti` + blacklist expirada via logout).
 - Rate-limit e idempotência em mutações.
 - IAM least privilege, SG fechados, HTTPS obrigatório, CORS estrito.
 - SAST/DAST (CodeQL, Trivy), Dependabot, gitleaks.
@@ -195,7 +201,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 ## Backlog priorizado para Product Ready
 
 1. **UI e dashboards analíticos**: priorizar gráficos avançados, filtros dinâmicos e cobertura com testes E2E (login, criação/edição, analytics).
-2. **Hardening de segurança**: implementar revogação de tokens (`jti`/Redis), MFA opcional, WAF com regras OWASP e CORS restritivo; atualizar o checklist.
+2. **Hardening de segurança**: finalizar MFA opcional, WAF com regras OWASP e CORS restritivo; checklist já atualizado com revogação entregue.
 3. **Governança & compliance**: formalizar política de retenção de dados/logs (S3 WORM/365 dias), automatizar revisões de permissões IAM/RBAC e documentar runbooks de incidentes.
 
 ## Créditos
