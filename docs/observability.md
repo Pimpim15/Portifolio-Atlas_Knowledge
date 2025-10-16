@@ -30,6 +30,13 @@ para atingir o nível "product ready".
 - Dashboard CloudWatch atualizado agrega métricas de SQS, ECS, RDS e
   OpenSearch para visão de 24h.
 
+## Stack local Prometheus + Grafana
+
+- O `docker-compose` sobe Prometheus (http://localhost:9090) e Grafana (http://localhost:3000).
+- O datasource `PROM_DS` é configurado via `infra/grafana/provisioning/datasources/datasource.yml` apontando para o serviço Prometheus.
+- Dashboards pré-prontos ficam em `infra/grafana/dashboards/` (overview da plataforma e painel detalhado de reindex).
+- As regras de alerta residem em `infra/prometheus/rules/atlas-alerts.yml` e já são carregadas pelo Prometheus local.
+
 ## Como executar análises rápidas
 
 ```powershell

@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     worker_max_attempts: int = Field(5, alias="WORKER_MAX_ATTEMPTS")
     worker_retry_backoff_seconds: int = Field(30, alias="WORKER_RETRY_BACKOFF_SECONDS")
     worker_retry_backoff_max_seconds: int = Field(300, alias="WORKER_RETRY_BACKOFF_MAX_SECONDS")
+    worker_metrics_port: int = Field(9000, alias="WORKER_METRICS_PORT")
 
 
 @lru_cache(maxsize=1)

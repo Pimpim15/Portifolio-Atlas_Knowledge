@@ -12,7 +12,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - API FastAPI com autenticação JWT RS256, revogação de tokens (`/auth/logout` com blacklist Redis), RBAC por organização e rotas principais (`/auth`, `/users`, `/docs`, `/search`) com _fallback_ para PostgreSQL.
 - Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
-  - Dashboard Grafana pronto (`infra/grafana/reindex-dashboard.json`) com visão operacional dos jobs/itens e tendências por hora.
+  - Dashboards Grafana provisionados automaticamente em `infra/grafana/dashboards/` (overview e reindex) com datasource Prometheus pré-configurado.
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos. Em ambiente local, a API processa indexações/reindexações inline quando o SQS/Localstack não está disponível, evitando jobs pendentes eternos.
@@ -90,6 +90,8 @@ make dev
    - API: http://localhost:8000/docs
    - Frontend: http://localhost:5173
    - OpenSearch Dashboards: http://localhost:5601
+  - Prometheus: http://localhost:9090
+  - Grafana: http://localhost:3000 (atlas/atlas)
 
 ### Fluxo completo no frontend
 
@@ -141,15 +143,15 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/auth/logout' -Headers
 - OpenTelemetry instrumentando FastAPI, SQLAlchemy, HTTP clients. Export via OTLP para collector.
 - Middleware aplica `X-Request-ID` em todas as respostas e emite métricas Prometheus (`/metrics`).
 - Dashboards CloudWatch: latência p95, erros 5xx, backlog SQS, métricas RDS, saúde do OpenSearch.
-- Dashboard Grafana de reindex (`infra/grafana/reindex-dashboard.json`):
-  1. Em Grafana, acesse **Dashboards > New > Import**.
-  2. Cole o conteúdo do JSON ou selecione o arquivo local.
-  3. Aponte para o datasource Prometheus usado no ambiente (ajuste o UID `PROM_DS` se necessário).
+- Dashboards Grafana (`infra/grafana/dashboards/`):
+  1. O `docker-compose` já monta os dashboards e o datasource `PROM_DS` automaticamente via `infra/grafana/provisioning`.
+  2. Após `docker compose up`, acesse http://localhost:3000 (atlas/atlas) e navegue até **Dashboards → Atlas**.
+  3. Dashboards incluídos: `Atlas Overview` (API/worker) e `Atlas Reindex` (pipeline de reindex detalhado).
 - Guia de observabilidade com screenshots e comandos: [`docs/observability.md`](docs/observability.md).
-- Alertas Prometheus (`infra/otel/reindex-alert-rules.yaml`):
-  1. Referencie o arquivo na configuração do alertmanager/prometheus (`rule_files`).
+- Alertas Prometheus (`infra/prometheus/rules/atlas-alerts.yml`):
+  1. Já é carregado pelo Prometheus local; basta apontar o alertmanager de preferência.
   2. Ajuste os rótulos `service`/`severity` conforme a taxonomia local.
-  3. Defina rotas no Alertmanager para e-mails/Slack incidentais.
+  3. Estende os alarmes críticos: erro 5xx elevado, latência p95, retries do worker e atraso de reindex.
 - TLS no ALB:
   1. Gere/import um certificado ACM válido (wildcard recomendado) na região configurada (`alb_certificate_arn`).
   2. Atualize `infra/terraform/envs/<env>/terraform.tfvars` com o ARN correto.

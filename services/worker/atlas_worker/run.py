@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import]
+from prometheus_client import start_http_server
 
 from services.api.atlas_api.config import Settings, get_settings
 from services.api.atlas_api.observability.logging import (
@@ -448,6 +449,9 @@ def main() -> None:
     configure_logging()
     setup_tracing("atlas-worker")
     logger.info("worker_started")
+    settings = get_settings()
+    start_http_server(settings.worker_metrics_port)
+    logger.info("worker_metrics_server_started", port=settings.worker_metrics_port)
     while True:
         _poll_loop()
         time.sleep(5)

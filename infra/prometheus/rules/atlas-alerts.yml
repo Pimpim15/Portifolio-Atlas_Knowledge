@@ -1,0 +1,40 @@
+groups:
+  - name: atlas-availability
+    rules:
+      - alert: AtlasApiHighErrorRate
+        expr: sum(rate(atlas_request_total{status=~"5.."}[5m])) / sum(rate(atlas_request_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Erro 5xx elevado na API"
+          description: "A taxa de erros 5xx ultrapassou 5% nas últimas 10m."
+
+      - alert: AtlasApiLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(atlas_request_latency_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latência p95 elevada"
+          description: "A latência p95 da API ficou acima de 2s nos últimos 10m."
+
+  - name: atlas-worker
+    rules:
+      - alert: AtlasWorkerRetriesSpike
+        expr: sum(increase(atlas_worker_retry_total[15m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker realizando muitos retries"
+          description: "Mais de 20 retries registrados em 15m."
+
+      - alert: AtlasReindexLag
+        expr: atlas_reindex_job_oldest_active_seconds > 900
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Reindex atrasado"
+          description: "Existe job de reindex ativo há mais de 15 minutos."

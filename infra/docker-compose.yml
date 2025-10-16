@@ -48,10 +48,13 @@ services:
       SQS_QUEUE_URL: http://localstack:4566/000000000000/docs-events
       JWT_AUDIENCE: '["atlas-api"]'
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://adot:4318/v1/traces"
+      WORKER_METRICS_PORT: 9000
     depends_on:
       - redis
       - opensearch
       - localstack
+    ports:
+      - "9000:9000"
 
   frontend:
     build: ../services/frontend
@@ -129,6 +132,45 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
+
+  es_exporter:
+    image: prometheuscommunity/elasticsearch-exporter:1.6.0
+    command:
+      - "--es.uri=http://opensearch:9200"
+      - "--es.all"
+      - "--es.indices"
+    ports:
+      - "9114:9114"
+    depends_on:
+      - opensearch
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+      - worker
+      - es_exporter
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    environment:
+      GF_SECURITY_ADMIN_USER: atlas
+      GF_SECURITY_ADMIN_PASSWORD: atlas
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
 volumes:
   pgdata:
