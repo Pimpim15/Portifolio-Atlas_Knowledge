@@ -134,7 +134,7 @@ services:
       - "4318:4318"
 
   es_exporter:
-    image: prometheuscommunity/elasticsearch-exporter:1.6.0
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
     command:
       - "--es.uri=http://opensearch:9200"
       - "--es.all"
