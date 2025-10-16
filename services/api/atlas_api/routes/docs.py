@@ -6,7 +6,7 @@ import uuid
 from collections import Counter
 from collections.abc import Sequence
 from contextlib import nullcontext
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -508,6 +508,7 @@ async def list_reindex_job_items(
 @router.get("/stats", response_model=DocumentStatsResponse)
 @limiter.limit(settings.rate_limit_default)
 async def get_documents_stats(
+    request: Request,
     current_user: CurrentUser = Depends(RBACGuard(["viewer", "editor", "admin"])),
     session: AsyncSession = Depends(get_db),
 ) -> DocumentStatsResponse:
@@ -527,14 +528,20 @@ async def get_documents_stats(
     author_counter: Counter[uuid.UUID | None] = Counter()
     series_counter: Counter[date] = Counter()
 
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     start_date = today - timedelta(days=29)
 
     for doc in documents:
         tags = doc.tags or []
         tag_counter.update(tags)
         author_counter.update([doc.created_by])
-        created_day = doc.created_at.date()
+
+        created_at = doc.created_at
+        if created_at is None:
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        created_day = created_at.astimezone(timezone.utc).date()
         if created_day >= start_date:
             series_counter.update([created_day])
 

@@ -35,7 +35,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 
 | Status | Entrega | Observações |
 | --- | --- | --- |
-| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
+| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais, painel de reindex e tela de insights entregues; testes E2E e gráficos avançados pendentes. |
 | ✅ | Observabilidade ponta a ponta | Tracing cross-service ativo (SQS → worker), dashboard + alarmes CloudWatch, queries Log Insights versionadas e evidências publicadas em `docs/observability.md`. |
 | ✅ | Terraform com recursos reais | Infra estratificada com rotação automática do segredo RDS via Lambda gerenciada, otimizações de custo e observabilidade nativa. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipeline com planos/applies para dev/stage/prod, ambientes protegidos e redeploy ECS por ambiente. |
@@ -100,6 +100,7 @@ make dev
   - Usuários `admin` ganham o botão **Novo documento**, que abre um modal com formulário para cadastrar runbooks/políticas via `POST /docs`.
   - Sucessos de criação apresentam um modal de confirmação e atualizam automaticamente a grade de resultados.
   - Um painel de reindexação mostra jobs recentes, progresso (pendentes/em andamento/concluídos/falhos) e permite disparar novas execuções e inspecionar itens.
+  - O atalho **Insights** leva à tela analítica com indicadores agregados, tags/autores em destaque e histórico de publicações alimentado por `GET /docs/stats`.
 3. **Detalhes** — Ao abrir um item, a rota `/docs/{id}` traz o conteúdo completo com contexto visual moderno (chips de tags, versão, data relativa e _skeleton loader_ durante o carregamento).
 
 ### Validando a API ponta a ponta
@@ -184,7 +185,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Modelos SQLAlchemy + migrations iniciais | Dados base (usuários, organizações, documentos, memberships) prontos. |
 | ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento, reindex, idempotência e rate-limit entregues. |
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
-| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais + painel de reindex entregues; dashboards analíticos e testes E2E pendentes. |
+| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais, painel de reindex e tela de insights entregues; testes E2E e gráficos avançados pendentes. |
 | ✅ | Observabilidade ponta a ponta | Tracing, dashboards, alarmes e queries Log Insights versionadas; screenshots adicionadas à documentação. |
 | ✅ | Terraform com recursos reais | Infra concluída com rotação automática de segredos, controles de custo e outputs para observabilidade. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipelines multiambiente com approvals e redeploy ECS automatizado. |
@@ -194,7 +195,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 ## Backlog priorizado para Product Ready
 
 1. **Consolidar benchmarks oficiais**: executar cargas em stage/prod, anexar CSVs e análise comparativa ao repositório.
-2. **UI e dashboards analíticos**: evoluir o frontend com painéis avançados e cobrir os fluxos com testes E2E.
+2. **UI e dashboards analíticos**: ampliar visualizações (gráficos detalhados, filtros) e cobrir fluxos com testes E2E.
 3. **Guardrails de custos e capacidade**: configurar AWS Budgets, storage autoscaling e alarmes de limites críticos.
 4. **Smoke tests automatizados**: acoplar `bench/run_headless.py` ao pipeline para validar releases antes do deploy.
 5. **Hardening de segurança**: revisar checklist, aplicar pen tests leves e documentar respostas a incidentes.

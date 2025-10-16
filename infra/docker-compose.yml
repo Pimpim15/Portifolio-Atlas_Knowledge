@@ -16,9 +16,9 @@ services:
       JWT_PUBLIC_KEY: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqYXrez83hSEoy9cBS0Zj\nuxpx+ZnC2DYLRZ82k7fZ0Lzr1sZ/+b6kn/PFdobtFgqUJb60U1nvyFTjcsxl/lPB\nUMeODhtdL9HfM+8KfQZRJJF0fVudP7CrlTO8+fhD3GTvdBrzEmbDorDe/0qnBHKn\nt0BAg0J7b04YJ4D/k9vlJoVcWMkGyu0xU1h2HJ7DLUoXnOv8rXKYvHQ5VVcUHFO+\nfgeOS0y5d4+wFGKsl6zO8Fax+kBKjI+HgqwInfVcEAJZlddwEkMk5+lETLgCCFuy\n1zsZpDe5xCWUiqkY1zjIlkNnj89fHwD9vY2otcjd0a3oL0hNEhmz92ukIG8xJ5WY\nEwIDAQAB\n-----END PUBLIC KEY-----"
       SQS_QUEUE_URL: http://localstack:4566/000000000000/docs-events
       OTEL_EXPORTER_OTLP_ENDPOINT: http://adot:4318
-    RATE_LIMIT_DEFAULT: "60/minute"
-    RATE_LIMIT_AUTH: "10/minute"
-    RATE_LIMIT_MUTATION: "30/minute"
+      RATE_LIMIT_DEFAULT: "60/minute"
+      RATE_LIMIT_AUTH: "10/minute"
+      RATE_LIMIT_MUTATION: "30/minute"
     ports:
       - "8000:8000"
     depends_on:
