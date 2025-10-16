@@ -126,7 +126,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
   - `lint-test`: instala dependências via Poetry, roda Ruff, MyPy e pytest (gera `coverage.xml` ≥ 85%).
   - `frontend`: instala deps Node 20, roda `npm run lint` e `npm run build` no SPA.
   - `security`: executa Trivy (fs scan) e CodeQL (init/analyze) para Python e JavaScript.
-  - `locust-smoke`: sobe a stack Docker localmente, executa Locust headless por 1 minuto, falha se o tempo médio exceder 1.5s ou a taxa de falha passar de 1%, e publica os CSVs como artefato.
+  - `locust-smoke`: sobe a stack Docker localmente, executa Locust headless por 1 minuto, falha se o tempo médio exceder 1.5s ou a taxa de falha passar de 1%, e publica CSVs + resumo em Markdown como artefato.
 - `deploy.yml`: build/push imagens para ECR e executa Terraform plan/apply com approvals por ambiente (dev, stage, prod) antes de forçar novo deploy das services ECS.
 
 ## Observabilidade
@@ -160,6 +160,11 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs' -Headers @{ Aut
 - Integração ECS ↔ ALB:
   - API roda em Fargate com autoscaling (CPU target ≥ 60%).
   - Target group `atlas-<env>-api` recebe o tráfego HTTPS; paths definidos em `alb_frontend_path_patterns` podem ser roteados para workloads de frontend.
+
+## Performance & Benchmarks
+
+- Runner Locust headless (`bench/run_headless.py`) gera automaticamente CSVs, resumo Markdown e aplica guardrails de tempo médio/erro.
+- Resultado de referência e checklist de execução: [`docs/performance.md`](docs/performance.md).
 
 ## Segurança
 

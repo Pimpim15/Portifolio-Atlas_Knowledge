@@ -34,6 +34,7 @@ poetry run python bench/run_headless.py \
 - Os CSVs e gráficos serão armazenados em `bench/results/<prefix>*`.
 - Consulte `bench/results/sample_report.md` para um exemplo de análise consolidada.
 - Ajuste `--max-avg-ms` e `--max-fail-rate` conforme os SLOs de cada ambiente.
+- Um resumo Markdown (`<prefix>_summary.md`) é gerado automaticamente com as métricas principais.
 
 ### Execução interativa
 
@@ -60,6 +61,6 @@ wrk -t4 -c128 -d60s https://atlas.dev.example.com/health
 
 ## Próximos passos sugeridos
 
-- ✅ Smoke test Locust integrado ao pipeline de PR (`.github/workflows/pr.yml` → job `locust-smoke`) com guardrails de 1.5s/1%.
+- ✅ Smoke test Locust integrado ao pipeline de PR (`.github/workflows/pr.yml` → job `locust-smoke`) com guardrails de 1.5s/1% e artefatos CSV/Markdown.
 - Adicionar cenários que publiquem documentos em lote antes das consultas.
 - Armazenar artefatos com os relatórios de teste para comparação histórica.
