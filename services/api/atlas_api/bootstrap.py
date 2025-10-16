@@ -11,9 +11,9 @@ from .db.base import Base
 from .db.models import Document, DocumentVersion, Membership, Organization, RoleEnum, User
 from .deps import SessionLocal, engine
 from .observability.logging import get_logger
-from .security.passwords import hash_password, verify_password
 from .search.mappings import DOC_INDEX
 from .search.os_client import ensure_index_exists, get_client
+from .security.passwords import hash_password, verify_password
 
 logger = get_logger(component="api", module="bootstrap")
 

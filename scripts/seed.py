@@ -1,7 +1,6 @@
 """Script para povoar o ambiente local com dados iniciais."""
 
 import asyncio
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 

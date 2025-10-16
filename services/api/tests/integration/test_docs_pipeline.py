@@ -7,13 +7,13 @@ import uuid
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from services.api.atlas_api import bootstrap as bootstrap_module
+from services.api.atlas_api.db.models import Organization
 from services.api.atlas_api.deps import CurrentUser, SessionLocal, get_current_user
 from services.api.atlas_api.queue import publisher as queue_publisher
-from services.api.atlas_api.db.models import Organization
 from services.worker.atlas_worker import run as worker_run
-from sqlalchemy import select
 
 
 async def _fetch_org_id_async() -> uuid.UUID:

@@ -29,7 +29,7 @@ def create_access_token(
 ) -> str:
     settings = get_settings()
     raw_audience = settings.jwt_audience
-    if isinstance(raw_audience, (list, tuple, set)):
+    if isinstance(raw_audience, list | tuple | set):
         audience: str | None = next(iter(raw_audience), None)
     else:
         audience = raw_audience

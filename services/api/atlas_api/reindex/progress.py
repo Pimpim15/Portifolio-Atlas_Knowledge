@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 import uuid
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import datetime
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -1,4 +1,3 @@
-from services.api.atlas_api.main import app
 
 
 def test_health_check(client):

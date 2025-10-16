@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 
 import pytest
+from fastapi.testclient import TestClient
 from opensearchpy import OpenSearchException
 
 from services.api.atlas_api.deps import CurrentUser, get_current_user, get_db
@@ -12,7 +14,7 @@ from services.api.atlas_api.routes import search as search_module
 
 
 @pytest.fixture()
-def authenticated_user(client: "TestClient") -> CurrentUser:
+def authenticated_user(client: TestClient) -> Iterator[CurrentUser]:
     user = CurrentUser(
         id=uuid.uuid4(),
         email="user@example.com",
@@ -39,7 +41,7 @@ def authenticated_user(client: "TestClient") -> CurrentUser:
     overrides.pop(get_db, None)
 
 
-def test_search_uses_opensearch(client: "TestClient", authenticated_user: CurrentUser, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_uses_opensearch(client: TestClient, authenticated_user: CurrentUser, monkeypatch: pytest.MonkeyPatch) -> None:
     expected_response = search_module.SearchResponse(
         results=[
             search_module.SearchResponseItem(
@@ -71,7 +73,7 @@ def test_search_uses_opensearch(client: "TestClient", authenticated_user: Curren
 
 
 def test_search_fallbacks_to_database_on_opensearch_error(
-    client: "TestClient", authenticated_user: CurrentUser, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, authenticated_user: CurrentUser, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     expected_response = search_module.SearchResponse(
         results=[

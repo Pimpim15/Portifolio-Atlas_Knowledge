@@ -6,7 +6,8 @@ import contextlib
 import json
 import time
 import uuid
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import]
 
@@ -19,9 +20,9 @@ from services.api.atlas_api.observability.logging import (
 )
 from services.api.atlas_api.observability.metrics import (
     WORKER_ACTION_COUNT,
+    WORKER_MESSAGE_AGE_SECONDS,
     WORKER_PROCESSING_ERRORS,
     WORKER_PROCESSING_LATENCY,
-    WORKER_MESSAGE_AGE_SECONDS,
 )
 from services.api.atlas_api.observability.tracing import setup_tracing
 from services.api.atlas_api.queue.sqs import ensure_queue_exists, get_sqs_client

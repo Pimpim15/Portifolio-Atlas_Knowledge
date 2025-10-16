@@ -2,12 +2,12 @@
 
 import base64
 import binascii
+import time
 import uuid
 from collections import Counter
 from collections.abc import Sequence
 from contextlib import nullcontext
-from datetime import date, datetime, timedelta, timezone
-import time
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,7 +15,14 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..db.models import Document, DocumentVersion, ReindexJob, ReindexJobItem, ReindexJobStatus, User
+from ..db.models import (
+    Document,
+    DocumentVersion,
+    ReindexJob,
+    ReindexJobItem,
+    ReindexJobStatus,
+    User,
+)
 from ..deps import CurrentUser, RBACGuard, get_db, get_redis
 from ..observability.logging import get_logger
 from ..observability.metrics import REINDEX_JOB_COUNT, REINDEX_JOB_LATENCY
@@ -49,7 +56,7 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         created_at = datetime.fromisoformat(created_at_raw)
         return created_at, uuid.UUID(item_id_raw)
     except (ValueError, binascii.Error):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor") from None
 
 
 class DocumentBase(BaseModel):
@@ -211,9 +218,9 @@ async def _collect_job_item_counts(
         job_id: _default_counts().copy() for job_id in job_ids
     }
 
-    for job_id, status, count in result.all():
+    for job_id, item_status, count in result.all():
         job_counts = counts_map.setdefault(job_id, _default_counts().copy())
-        job_counts[status] = int(count)
+        job_counts[item_status] = int(count)
 
     return counts_map
 
@@ -364,8 +371,8 @@ async def trigger_reindex(
 
         job_status_value = job.status.value
 
-        for doc, item in zip(documents, job_items):
-            enqueue_reindex_document(str(job.id), doc, str(item.id))
+    for doc, item in zip(documents, job_items, strict=False):
+        enqueue_reindex_document(str(job.id), doc, str(item.id))
 
         logger.info(
             "reindex_job_enqueued",
@@ -528,7 +535,7 @@ async def get_documents_stats(
     author_counter: Counter[uuid.UUID | None] = Counter()
     series_counter: Counter[date] = Counter()
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     start_date = today - timedelta(days=29)
 
     for doc in documents:
@@ -540,8 +547,8 @@ async def get_documents_stats(
         if created_at is None:
             continue
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        created_day = created_at.astimezone(timezone.utc).date()
+            created_at = created_at.replace(tzinfo=UTC)
+        created_day = created_at.astimezone(UTC).date()
         if created_day >= start_date:
             series_counter.update([created_day])
 

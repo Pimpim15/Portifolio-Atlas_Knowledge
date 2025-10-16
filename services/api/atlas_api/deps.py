@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 import uuid
+from collections.abc import AsyncGenerator
 
-from fastapi import Depends, Header, status as http_status
+from fastapi import Depends, Header
+from fastapi import status as http_status
 from fastapi.exceptions import HTTPException
 from jose import JWTError, jwt
 from pydantic import BaseModel
+from redis import Redis  # type: ignore[import]
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from redis import Redis  # type: ignore[import]
 
 from .config import get_settings
 from .db.models import Membership, RoleEnum, User
@@ -52,7 +53,7 @@ async def get_current_user(
     token = authorization.split(" ", 1)[1].strip()
     try:
         raw_audience = settings.jwt_audience
-        if isinstance(raw_audience, (list, tuple, set)):
+        if isinstance(raw_audience, list | tuple | set):
             audience = next(iter(raw_audience), None)
         else:
             audience = raw_audience

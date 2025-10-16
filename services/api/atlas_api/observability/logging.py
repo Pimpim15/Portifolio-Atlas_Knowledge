@@ -4,6 +4,7 @@ import logging
 from typing import Any, cast
 
 import structlog
+
 try:
     from opentelemetry import trace  # type: ignore[import]
 except ImportError:  # pragma: no cover

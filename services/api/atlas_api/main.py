@@ -5,14 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-
 from slowapi.errors import RateLimitExceeded  # type: ignore[import]
 
 from .observability.logging import configure_logging
+from .observability.middleware import ObservabilityMiddleware
 from .observability.tracing import setup_tracing
 from .security.headers import SecurityHeadersMiddleware
 from .security.ratelimit import init_rate_limiter
-from .observability.middleware import ObservabilityMiddleware
 
 
 def create_app() -> FastAPI:

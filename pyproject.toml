@@ -72,6 +72,10 @@ target-version = "py311"
 select = ["E", "F", "B", "I", "UP", "N"]
 ignore = ["E203", "E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"services/api/atlas_api/deps.py" = ["B008"]
+"services/api/atlas_api/routes/**/*.py" = ["B008"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
