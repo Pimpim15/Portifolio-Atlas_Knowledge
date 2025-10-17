@@ -13,6 +13,7 @@ from ..config import get_settings
 from ..db.models import User
 from ..deps import CurrentUser, decode_token, get_current_user, get_db, get_redis
 from ..security.jwt import create_access_token, create_refresh_token
+from ..security.mfa import requires_mfa, verify_mfa_code
 from ..security.passwords import verify_password
 from ..security.ratelimit import init_rate_limiter
 from ..security.token_revocation import mark_token_revoked
@@ -25,6 +26,7 @@ limiter = init_rate_limiter()
 class LoginRequest(BaseModel):
     email: str
     password: str
+    mfa_code: str | None = None
 
 
 class TokenPair(BaseModel):
@@ -62,6 +64,9 @@ async def login(
 
     roles = [membership.role.value for membership in memberships]
     org_ids = [str(membership.org_id) for membership in memberships]
+
+    if requires_mfa(user):
+        verify_mfa_code(user, payload.mfa_code)
 
     access_token, _ = create_access_token(sub=str(user.id), email=user.email, roles=roles, organization_ids=org_ids)
     refresh_token, _ = create_refresh_token(sub=str(user.id))

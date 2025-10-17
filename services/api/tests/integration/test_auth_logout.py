@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import pyotp
 from fastapi.testclient import TestClient
 
 
 def _login(client: TestClient) -> tuple[str, str]:
+    totp = pyotp.TOTP("JBSWY3DPEHPK3PXP")
     response = client.post(
         "/auth/login",
-        json={"email": "admin@acme.com", "password": "admin"},
+        json={"email": "admin@acme.com", "password": "admin", "mfa_code": totp.now()},
     )
     assert response.status_code == 200, response.json()
     payload = response.json()

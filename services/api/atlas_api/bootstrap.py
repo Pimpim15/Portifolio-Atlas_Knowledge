@@ -13,6 +13,7 @@ from .deps import SessionLocal, engine
 from .observability.logging import get_logger
 from .search.mappings import DOC_INDEX
 from .search.os_client import ensure_index_exists, get_client
+from .security.mfa import bootstrap_admin_mfa_secret
 from .security.passwords import hash_password, verify_password
 
 logger = get_logger(component="api", module="bootstrap")
@@ -47,6 +48,8 @@ async def _ensure_seed_data(session: AsyncSession) -> None:
         if not verify_password("admin", user.password_hash):
             user.password_hash = hash_password("admin")
         user.is_active = True
+
+    bootstrap_admin_mfa_secret(user)
 
     membership_result = await session.execute(
         select(Membership).where(and_(Membership.user_id == user.id, Membership.org_id == org.id))

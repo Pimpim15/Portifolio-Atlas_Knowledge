@@ -20,7 +20,12 @@ async def seed() -> None:
 
 async def _seed_data(session: AsyncSession) -> None:
     org = Organization(name="Acme Corp")
-    admin = User(email="admin@acme.com", password_hash=hash_password("admin"))
+    admin = User(
+        email="admin@acme.com",
+        password_hash=hash_password("admin"),
+        mfa_enabled=True,
+        mfa_secret=settings.admin_bootstrap_mfa_secret,
+    )
     membership = Membership(user=admin, organization=org, role=RoleEnum.ADMIN)
     doc = Document(title="Runbook P1", body="Conteúdo inicial", tags=["incidente", "rds"], organization=org)
     session.add_all([org, admin, membership, doc])

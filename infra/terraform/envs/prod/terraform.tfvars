@@ -12,3 +12,5 @@ enable_cost_budget          = true
 cost_budget_amount          = 800
 cost_budget_threshold_percent = 70
 cost_budget_emails          = ["finops@example.com", "cloud@example.com"]
+enable_waf                  = true
+waf_rate_limit              = 2500

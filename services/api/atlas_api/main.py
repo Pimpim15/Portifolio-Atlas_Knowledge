@@ -4,10 +4,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from slowapi.errors import RateLimitExceeded
 
+from .config import get_settings
 from .observability.logging import configure_logging
 from .observability.middleware import ObservabilityMiddleware
 from .observability.tracing import setup_tracing
@@ -19,6 +21,7 @@ def create_app() -> FastAPI:
     configure_logging()
     setup_tracing()
 
+    settings = get_settings()
     app = FastAPI(title="Atlas Knowledge", version="0.1.0")
 
     limiter = init_rate_limiter()
@@ -29,6 +32,13 @@ def create_app() -> FastAPI:
     app.add_middleware(ObservabilityMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
+        allow_credentials=settings.cors_allow_credentials,
+    )
 
     from .routes import auth, docs, health, search, users
 

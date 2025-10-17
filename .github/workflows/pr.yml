@@ -28,12 +28,18 @@ jobs:
         run: pip install poetry==1.8.3
       - name: Install dependencies
         run: poetry install
+      - name: Verificar lockfile
+        run: poetry lock --check
+      - name: Run pip-audit
+        run: poetry run pip-audit --strict
       - name: Run Ruff
         run: poetry run ruff check services/api/atlas_api
       - name: Run MyPy
         run: poetry run mypy services/api/atlas_api
       - name: Run pytest
         run: poetry run pytest services/api/tests --cov=atlas_api --cov-report=xml --cov-report=term
+      - name: Enforce coverage >= 85%
+        run: poetry run python tools/ci/check_coverage.py --threshold 0.85
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
@@ -49,6 +55,9 @@ jobs:
       - name: Install deps
         working-directory: services/frontend
         run: npm install
+      - name: Run npm audit (high severity)
+        working-directory: services/frontend
+        run: npm audit --audit-level=high
       - name: Lint
         working-directory: services/frontend
         run: npm run lint

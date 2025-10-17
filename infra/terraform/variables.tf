@@ -38,6 +38,24 @@ variable "alb_frontend_path_patterns" {
   default     = ["/app/*"]
 }
 
+variable "enable_waf" {
+  description = "Habilita Web Application Firewall vinculado ao ALB"
+  type        = bool
+  default     = true
+}
+
+variable "waf_rate_limit" {
+  description = "Limite de requisições (por 5 minutos) antes de bloquear IP"
+  type        = number
+  default     = 5000
+}
+
+variable "waf_log_retention_days" {
+  description = "Retenção dos logs do WAF em dias"
+  type        = number
+  default     = 90
+}
+
 variable "cloudwatch_alarm_actions" {
   description = "ARNs acionados quando alarmes CloudWatch disparam"
   type        = list(string)

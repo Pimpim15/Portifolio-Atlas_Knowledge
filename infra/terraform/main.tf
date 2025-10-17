@@ -68,6 +68,15 @@ module "alb" {
   frontend_path_patterns = var.alb_frontend_path_patterns
 }
 
+module "waf" {
+  count              = var.enable_waf ? 1 : 0
+  source             = "./modules/waf"
+  environment        = var.environment
+  alb_arn            = module.alb.load_balancer_arn
+  rate_limit         = var.waf_rate_limit
+  log_retention_days = var.waf_log_retention_days
+}
+
 module "ecs" {
   source                    = "./modules/ecs_service"
   environment               = var.environment

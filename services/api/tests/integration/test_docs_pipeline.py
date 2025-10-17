@@ -87,7 +87,7 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
 
     monkeypatch.setattr(worker_run, "index_document", fake_index_document)
 
-    worker_run._process_message(message, object())
+    worker_run._process_message(message, object(), attempt=1, max_attempts=5)
 
     assert indexed and indexed[0][0] == document_payload["id"]
 
@@ -153,7 +153,7 @@ def test_create_document_flow_triggers_worker(client: TestClient, monkeypatch) -
     assert len(job_item_ids) == len(reindex_events)
 
     for event in reindex_events:
-        worker_run._process_message(event, object())
+        worker_run._process_message(event, object(), attempt=1, max_attempts=5)
 
     reindex_list = client.get("/docs/reindex?limit=10&offset=0", headers=headers)
     assert reindex_list.status_code == 200, reindex_list.json()

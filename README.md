@@ -13,6 +13,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
 - Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
   - Dashboards Grafana provisionados automaticamente em `infra/grafana/dashboards/` (overview e reindex) com datasource Prometheus pré-configurado.
+- Hardening de segurança concluído com MFA TOTP para administradores, CORS restritivo, WAF com regras OWASP, mascaramento de PII em logs e dependências monitoradas (Dependabot, pip-audit, npm audit).
 - Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
 - Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
 - Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos. Em ambiente local, a API processa indexações/reindexações inline quando o SQS/Localstack não está disponível, evitando jobs pendentes eternos.
@@ -182,9 +183,11 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 - JWT RS256, chaves em AWS Secrets Manager.
 - Revogação de tokens com Redis (`jti` + blacklist expirada via logout).
 - Rate-limit e idempotência em mutações.
-- IAM least privilege, SG fechados, HTTPS obrigatório, CORS estrito.
-- SAST/DAST (CodeQL, Trivy), Dependabot, gitleaks.
-- Backups RDS, testes de restauração, logs sem PII sensível.
+- MFA TOTP obrigatório para administradores (`pyotp`), logout com revogação de tokens e auditoria completa.
+- IAM least privilege, SG fechados, HTTPS obrigatório, CORS restritivo configurable e WAF AWS com regras OWASP + rate-limit defensivo.
+- SAST/DAST (CodeQL, Trivy), Dependabot, pip-audit, npm audit e gitleaks.
+- Backups RDS, testes de restauração, logs sem PII sensível com mascaramento (`docs/security/logging_standards.md`).
+- Políticas formais publicadas: [privacidade](docs/security/privacy_policy.md), [retenção](docs/security/data_retention_policy.md), [governança de acessos](docs/security/access_governance.md) e [playbooks de incidente](docs/security/incident_response_playbook.md).
 
 ## Roadmap atualizado
 
@@ -203,8 +206,8 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 ## Backlog priorizado para Product Ready
 
 1. **UI e dashboards analíticos**: priorizar gráficos avançados, filtros dinâmicos e cobertura com testes E2E (login, criação/edição, analytics).
-2. **Hardening de segurança**: finalizar MFA opcional, WAF com regras OWASP e CORS restritivo; checklist já atualizado com revogação entregue.
-3. **Governança & compliance**: formalizar política de retenção de dados/logs (S3 WORM/365 dias), automatizar revisões de permissões IAM/RBAC e documentar runbooks de incidentes.
+2. **Experiência do usuário**: adicionar notificações em tempo real, acessibilidade (ARIA) e internacionalização.
+3. **Product readiness**: expandir catálogo de runbooks e automatizar exercícios trimestrais usando pipelines GitHub Actions.
 
 ## Créditos
 

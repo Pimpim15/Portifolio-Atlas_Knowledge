@@ -8,3 +8,5 @@ rds_allocated_storage       = 20
 rds_max_allocated_storage   = 40
 rds_performance_insights_enabled = false
 enable_cost_budget          = false
+enable_waf                  = true
+waf_rate_limit              = 2000

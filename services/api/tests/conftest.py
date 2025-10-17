@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,8 +29,9 @@ class _InMemoryRedis:
 
 
 @pytest.fixture(scope="session")
-def client() -> TestClient:
+def client() -> Iterator[TestClient]:
     app = create_app()
     fake_redis = _InMemoryRedis()
     app.dependency_overrides[get_redis] = lambda: fake_redis
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client

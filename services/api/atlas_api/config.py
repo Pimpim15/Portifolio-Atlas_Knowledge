@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     aws_access_key_id: str | None = Field(None, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str | None = Field(None, alias="AWS_SECRET_ACCESS_KEY")
     aws_endpoint_url: str | None = Field(None, alias="AWS_ENDPOINT_URL")
+    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"], alias="CORS_ALLOWED_ORIGINS")
+    cors_allow_methods: list[str] = Field(
+        default_factory=lambda: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        alias="CORS_ALLOW_METHODS",
+    )
+    cors_allow_headers: list[str] = Field(default_factory=lambda: ["Authorization", "Content-Type", "X-Request-ID"], alias="CORS_ALLOW_HEADERS")
+    cors_allow_credentials: bool = Field(True, alias="CORS_ALLOW_CREDENTIALS")
 
     jwt_issuer: str = Field("atlas-knowledge", alias="JWT_ISSUER")
     jwt_audience: list[str] = Field(default_factory=lambda: ["atlas-api"], alias="JWT_AUDIENCE")
@@ -85,6 +92,13 @@ class Settings(BaseSettings):
     worker_retry_backoff_seconds: int = Field(30, alias="WORKER_RETRY_BACKOFF_SECONDS")
     worker_retry_backoff_max_seconds: int = Field(300, alias="WORKER_RETRY_BACKOFF_MAX_SECONDS")
     worker_metrics_port: int = Field(9000, alias="WORKER_METRICS_PORT")
+    enforce_admin_mfa: bool = Field(True, alias="ENFORCE_ADMIN_MFA")
+    admin_mfa_roles: list[str] = Field(default_factory=lambda: ["admin"], alias="ADMIN_MFA_ROLES")
+    admin_bootstrap_mfa_secret: str = Field("JBSWY3DPEHPK3PXP", alias="ADMIN_BOOTSTRAP_MFA_SECRET")
+    log_mask_fields: list[str] = Field(
+        default_factory=lambda: ["email", "user_email", "user_id", "subject", "customer_email"],
+        alias="LOG_MASK_FIELDS",
+    )
 
 
 @lru_cache(maxsize=1)
