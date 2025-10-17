@@ -5,6 +5,7 @@ import api from '../utils/api';
 type LoginPayload = {
   email: string;
   password: string;
+  mfa_code?: string;
 };
 
 type AuthenticatedUser = {
@@ -20,7 +21,16 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthenticatedUser | null>(null);
 
   const login = async (payload: LoginPayload) => {
-    const { data } = await api.post('/auth/login', payload);
+    const body: Record<string, string> = {
+      email: payload.email,
+      password: payload.password,
+    };
+
+    if (payload.mfa_code) {
+      body.mfa_code = payload.mfa_code;
+    }
+
+    const { data } = await api.post('/auth/login', body);
     accessToken.value = data.access;
     refreshToken.value = data.refresh;
     localStorage.setItem('atlas:access_token', data.access);

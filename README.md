@@ -14,16 +14,16 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - **Observabilidade**: OpenTelemetry → ADOT → AWS X-Ray, CloudWatch Logs, métricas e alarmes.
 - **Qualidade**: pytest (unit, integração, e2e), cobertura ≥ 85%, lint (ruff), mypy, pre-commit, Trivy e CodeQL.
 
-### ✅ Entregue
+### ✅ Implementado e validado localmente
 
 - API FastAPI com autenticação JWT RS256, revogação de tokens (`/auth/logout` com blacklist Redis), RBAC por organização e rotas principais (`/auth`, `/users`, `/docs`, `/search`) com _fallback_ para PostgreSQL.
-- Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API.
-- Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry.
-  - Dashboards Grafana provisionados automaticamente em `infra/grafana/dashboards/` (overview e reindex) com datasource Prometheus pré-configurado.
-- Hardening de segurança concluído com MFA TOTP para administradores, CORS restritivo, WAF com regras OWASP, mascaramento de PII em logs e dependências monitoradas (Dependabot, pip-audit, npm audit).
-- Ambiente local completo via `docker-compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector).
-- Pipelines CI (lint, type-check, testes, Trivy, CodeQL) e suíte de testes unitários/integrados para API, worker e fluxo de documentos.
-- Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos. Em ambiente local, a API processa indexações/reindexações inline quando o SQS/Localstack não está disponível, evitando jobs pendentes eternos.
+- Frontend Vue 3 com login, busca, CRUD de documentos e detalhamento consumindo a API; fluxos exercitados no ambiente local.
+- Observabilidade base com logs estruturados (trace/span IDs), métricas Prometheus e _tracing_ inicial via OpenTelemetry no stack Docker.
+  - Dashboards Grafana são provisionados pelo Docker (`infra/grafana/dashboards/`) e exibem métricas do ambiente local após importação automática.
+- Segurança básica: MFA TOTP habilitado para administradores seed, CORS restritivo configurável, mascaramento de PII nos logs (`LOG_MASK_FIELDS`) e dependências monitoradas por `pip-audit`/`npm audit`/Trivy no CI.
+- Ambiente local completo via `docker compose` (Postgres, Redis, OpenSearch, Localstack, ADOT collector) com seeds de dados, incl. usuário admin e dois documentos de exemplo.
+- Pipelines CI (lint, type-check, testes, Trivy, CodeQL) configurados para rodar em PRs; suíte de testes cobre API, worker e store de autenticação.
+- Idempotência com Redis (`Idempotency-Key`), limites por rota com SlowAPI e cabeçalhos de segurança opinativos.
 - Versionamento básico de documentos com histórico exposto em `GET /docs/{id}/versions`.
 - Módulo Terraform de SQS com DLQ, SSE e alarmes CloudWatch para o pipeline de documentos.
 - Módulo Terraform de VPC com IGW, NAT Gateway, sub-redes públicas/privadas multi-AZ configuráveis e rotas por zona.
@@ -39,15 +39,24 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 - RDS com autoscaling de armazenamento (`max_allocated_storage`) e opção de Performance Insights por ambiente.
 - AWS Budgets configurável por ambiente com alertas de custo (e-mail) controlados via Terraform.
 
-### ⚠️ Pendências
+
+### 🚧 Limitações conhecidas
+
+- Seeds de documentos não são indexados automaticamente no OpenSearch; execute `/docs/reindex` após subir o stack para popular a busca.
+- Observabilidade em AWS (CloudWatch dashboards, alertas e traces via ADOT) depende da aplicação dos módulos Terraform e ainda não possui evidências de execução real.
+- WAF, Budgets, TLS via ACM e rotação automática de secrets exigem ativação explícita no Terraform e não foram comprovados em um ambiente gerenciado.
+- O frontend carece de gestão de usuários, redefinição de senha, billing/go-to-market e automação E2E; estilos fora do dashboard principal ainda usam componentes básicos.
+- Pipelines `deploy.yml` e jobs de bench não possuem execuções registradas; permissões e etapas manuais precisam ser revisadas antes de uma release pública.
+
+### ⚠️ Pendências prioritárias
 
 | Status | Entrega | Observações |
 | --- | --- | --- |
-| ✅ | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais validados com roteiro em `docs/ux/validation_report.md`; automação E2E avançada segue no backlog. |
-| ✅ | Observabilidade ponta a ponta | Tracing cross-service ativo (SQS → worker), dashboard + alarmes CloudWatch, queries Log Insights versionadas e evidências publicadas em `docs/observability.md`. |
-| ✅ | Terraform com recursos reais | Infra estratificada com rotação automática do segredo RDS via Lambda gerenciada, otimizações de custo e observabilidade nativa. |
-| ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipeline com planos/applies para dev/stage/prod, ambientes protegidos e redeploy ECS por ambiente. |
-| ✅ | Benchmarks Locust/wrk com métricas publicadas | Bench oficial executado contra OpenSearch real; resumo em `bench/results/local-official_summary.md` e histórico versionado em `docs/performance-history.csv`. |
+| ⚠️ | UI Vue (login, busca, CRUD, dashboards) | Jornadas principais funcionam localmente, mas faltam cadastros administrativos, recuperação de senha, grafismos consistentes e cobertura E2E. |
+| ⚠️ | Observabilidade ponta a ponta | Instrumentação OTel e dashboards Terraform existem, porém ainda não há evidência em ambiente AWS; alertas Prometheus/CloudWatch não estão conectados a canais reais. |
+| ⚠️ | Terraform com recursos reais | Módulos prontos, mas dependem de parâmetros sensíveis (certificados ACM, budgets, alarm actions) e validação de apply/rollback. |
+| ⚠️ | Deploy automatizado (GitHub Actions + Terraform) | Fluxo definido (`deploy.yml`), porém sem histórico de execuções; permissões AWS/GitHub e approvals precisam ser configurados. |
+| ⚠️ | Benchmarks Locust/wrk com métricas publicadas | Apenas o benchmark local está registrado; falta rodar contra ambientes remotos e documentar comparação com SLOs. |
 
 ## Arquitetura
 
@@ -101,23 +110,30 @@ make dev
   - Prometheus: http://localhost:9090
   - Grafana: http://localhost:3000 (atlas/atlas)
 
-  ## Documentação pública
+5. Execute uma reindexação assim que o seed estiver disponível para que a busca e o painel de insights retornem resultados:
 
-  - `docs/onboarding.md`: roteiro completo de habilitação para squads de produto, engenharia e operações.
-  - `docs/api_reference.md`: referência detalhada de endpoints com exemplos de requisição e resposta.
-  - `docs/tutorials/document-lifecycle.md`: jornada guiada cobrindo login MFA, criação, edição e reindex.
-  - `docs/ux/validation_report.md`: registro das validações manuais e heurísticas aplicadas na UI.
+```powershell
+$login = Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/auth/login' -Body (@{ email = 'admin@acme.com'; password = 'admin'; mfa_code = '<TOTP>' } | ConvertTo-Json) -ContentType 'application/json'
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs/reindex' -Headers @{ Authorization = "Bearer $($login.access)" }
+```
+
+## Documentação pública
+
+- `docs/onboarding.md`: roteiro de habilitação com anotações sobre gaps atuais.
+- `docs/api_reference.md`: referência detalhada de endpoints com exemplos de requisição e resposta.
+- `docs/tutorials/document-lifecycle.md`: jornada guiada cobrindo login MFA, criação, edição e reindex (inclui nota sobre reindex manual).
+- `docs/ux/validation_report.md`: registro das validações manuais e heurísticas aplicadas, com limitações documentadas.
 
 ### Fluxo completo no frontend
 
 1. **Login** — Utilize `admin@acme.com` / `admin`. As credenciais estão persistidas no banco com hash e a autenticação devolve _access token_ + _refresh token_.
-2. **Dashboard** — Após autenticar você cai na tela de busca. Tudo é dinâmico:
-  - A busca dispara `GET /search` e exibe os resultados tanto em cards quanto em um modal dedicado (com _snippet_ e tags).
+2. **Dashboard** — Após autenticar você cai na tela de busca:
+  - A busca dispara `GET /search` e exibe os resultados em cards; lembre-se de rodar `/docs/reindex` após subir o ambiente para que os documentos seed apareçam.
   - Exceções da API disparam um modal de erro com feedback amigável.
   - Usuários `admin` ganham o botão **Novo documento**, que abre um modal com formulário para cadastrar runbooks/políticas via `POST /docs`.
   - Sucessos de criação apresentam um modal de confirmação e atualizam automaticamente a grade de resultados.
-  - Um painel de reindexação mostra jobs recentes, progresso (pendentes/em andamento/concluídos/falhos) e permite disparar novas execuções e inspecionar itens.
-  - O atalho **Insights** leva à tela analítica com indicadores agregados, tags/autores em destaque e histórico de publicações alimentado por `GET /docs/stats`.
+  - O painel de reindexação mostra jobs recentes, mas depende do worker/SQS estarem ativos; em modo dev ele executa inline pela API.
+  - O atalho **Insights** leva à tela analítica com indicadores agregados retornados por `GET /docs/stats`.
 3. **Detalhes** — Ao abrir um item, a rota `/docs/{id}` traz o conteúdo completo com contexto visual moderno (chips de tags, versão, data relativa e _skeleton loader_ durante o carregamento).
 
 ### Validando a API ponta a ponta
@@ -149,8 +165,8 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/auth/logout' -Headers
   - `lint-test`: instala dependências via Poetry, roda Ruff, MyPy e pytest (gera `coverage.xml` ≥ 85%).
   - `frontend`: instala deps Node 20, roda `npm run lint` e `npm run build` no SPA.
   - `security`: executa Trivy (fs scan) e CodeQL (init/analyze) para Python e JavaScript.
-  - `locust-smoke`: sobe a stack Docker localmente, executa Locust headless por 1 minuto, falha se o tempo médio exceder 1.5s ou a taxa de falha passar de 1%, e publica CSVs + resumo em Markdown como artefato.
-- `deploy.yml`: build/push imagens para ECR e executa Terraform plan/apply com approvals por ambiente (dev, stage, prod) antes de forçar novo deploy das services ECS.
+  - `locust-smoke`: sobe a stack Docker localmente, executa Locust headless por 1 minuto, falha se o tempo médio exceder 1.5s ou a taxa de falha passar de 1%, e publica CSVs + resumo em Markdown como artefato. O job de carga (`locust-smoke`) está configurado, mas exige Docker disponível no runner para funcionar.
+- `deploy.yml`: build/push imagens para ECR e executa Terraform plan/apply com approvals por ambiente (dev, stage, prod) antes de forçar novo deploy das services ECS. Permissões AWS e variáveis de ambiente ainda precisam ser configuradas antes do primeiro uso.
 
 ## Observabilidade
 
@@ -187,21 +203,19 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/auth/logout' -Headers
 ## Performance & Benchmarks
 
 - Runner Locust headless (`bench/run_headless.py`) gera automaticamente CSVs, resumo Markdown e aplica guardrails de tempo médio/erro.
-- Resultado de referência e checklist de execução: [`docs/performance.md`](docs/performance.md).
-- Histórico versionado em CSV via `scripts/bench_append_history.py` (`docs/performance-history.csv`).
+- Por enquanto há apenas um ensaio local (`bench/results/local-official_summary.md`); testes contra ambientes remotos ainda não aconteceram.
+- Utilize `scripts/bench_append_history.py` para versionar resultados reais assim que os ambientes forem disponibilizados.
 
 ## Segurança
 
 Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). Destaques:
 
-- JWT RS256, chaves em AWS Secrets Manager.
-- Revogação de tokens com Redis (`jti` + blacklist expirada via logout).
-- Rate-limit e idempotência em mutações.
-- MFA TOTP obrigatório para administradores (`pyotp`), logout com revogação de tokens e auditoria completa.
-- IAM least privilege, SG fechados, HTTPS obrigatório, CORS restritivo configurable e WAF AWS com regras OWASP + rate-limit defensivo.
-- SAST/DAST (CodeQL, Trivy), Dependabot, pip-audit, npm audit e gitleaks.
-- Backups RDS, testes de restauração, logs sem PII sensível com mascaramento (`docs/security/logging_standards.md`).
-- Políticas formais publicadas: [privacidade](docs/security/privacy_policy.md), [retenção](docs/security/data_retention_policy.md), [governança de acessos](docs/security/access_governance.md) e [playbooks de incidente](docs/security/incident_response_playbook.md).
+- JWT RS256 e refresh tokens com blacklist Redis já operacionais em dev; chaves vivem em variáveis de ambiente e precisam ser migradas para Secrets Manager em produção.
+- Rate-limit e idempotência ativos na API.
+- MFA TOTP obrigatório para administradores seed; expansão para demais perfis depende de ajuste na base de usuários.
+- Módulos Terraform cobrem WAF, SG, HTTPS e IAM, mas carecem de validação em ambiente provisionado.
+- SAST/DAST (CodeQL, Trivy), Dependabot, pip-audit, npm audit e gitleaks prontos no CI.
+- Políticas formais documentadas em [`docs/security`](docs/security); backups/testes de restauração devem ser executados antes da release.
 
 ## Roadmap atualizado
 
@@ -209,13 +223,13 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | --- | --- | --- |
 | ✅ | Modelos SQLAlchemy + migrations iniciais | Dados base (usuários, organizações, documentos, memberships) prontos. |
 | ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento, reindex, idempotência e rate-limit entregues. |
-| ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
-| ✅ | UI Vue (login, busca, CRUD, dashboards) | Journeys revisadas e documentadas (`docs/tutorials/document-lifecycle.md`, `docs/ux/validation_report.md`); backlog mantém automação e gráficos avançados. |
-| ✅ | Observabilidade ponta a ponta | Tracing, dashboards, alarmes e queries Log Insights versionadas; screenshots adicionadas à documentação. |
-| ✅ | Terraform com recursos reais | Infra concluída com rotação automática de segredos, controles de custo e outputs para observabilidade. |
-| ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipelines multiambiente com approvals e redeploy ECS automatizado. |
-| ✅ | Benchmarks Locust/wrk com métricas publicadas | Bench oficial executado contra OpenSearch real; resultados documentados em `docs/performance.md`. |
-| ✅ | Screenshots/logs/dashboards no README | Evidências capturadas e linkadas em `docs/observability.md`. |
+| ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando localmente; reindex executa inline se SQS/worker indisponíveis. |
+| ⚠️ | UI Vue (login, busca, CRUD, dashboards) | Carece de testes E2E, cadastros administrativos e ajustes de UX fora do dashboard principal. |
+| ⚠️ | Observabilidade ponta a ponta | Instrumentação pronta, mas resta validar dashboards/alertas em AWS. |
+| ⚠️ | Terraform com recursos reais | Módulos completos, dependem de parâmetros reais e ensaios de apply/destroy. |
+| ⚠️ | Deploy automatizado (GitHub Actions + Terraform) | Workflow criado, falta configurar secrets/roles e executar dry-runs. |
+| ⚠️ | Benchmarks Locust/wrk com métricas publicadas | Apenas cenário local registrado; ambientes remotos ainda não testados. |
+| ⚠️ | Screenshots/logs/dashboards no README | Capturas atuais são ilustrações; substituir por evidências reais após primeira execução em cloud. |
 
 ## Backlog priorizado para Product Ready
 

@@ -179,6 +179,9 @@ A API tenta usar OpenSearch e, em caso de falha, faz _fallback_ para PostgreSQL.
 }
 ```
 
+> Após o bootstrap inicial é necessário disparar `POST /docs/reindex` para que os documentos seed
+> sejam enviados ao OpenSearch. Caso contrário, a busca retornará vazia.
+
 ## Saúde, métricas e utilidades
 
 - `GET /health` – status de dependências (DB, Redis, OpenSearch, SQS).

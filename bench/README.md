@@ -1,6 +1,6 @@
 # Benchmarks Atlas Knowledge
 
-Este diretório contém cenários básicos de carga para validar performance da API. Foram pensados para rodar em pipelines de _smoke test_ ou para investigações manuais.
+Este diretório contém cenários básicos de carga para validar performance da API. Foram pensados para rodar em pipelines de _smoke test_ ou para investigações manuais. Até o momento os testes rodaram apenas contra o stack local (`http://localhost:8000`). Ajuste o host nas amostras abaixo conforme novos ambientes forem disponibilizados.
 
 ## Locust (recomendado)
 
@@ -15,14 +15,14 @@ pip install -r bench/requirements.txt
 ### Execução rápida (smoke)
 
 ```bash
-locust -f bench/locustfile.py --headless --users 10 --spawn-rate 2 --run-time 5m --host https://atlas.dev.example.com
+locust -f bench/locustfile.py --headless --users 10 --spawn-rate 2 --run-time 5m --host http://localhost:8000
 ```
 
 ### Runner automatizado
 
 ```bash
 poetry run python bench/run_headless.py \
-	--host https://atlas.stage.example.com \
+	--host http://localhost:8000 \
 	--users 50 \
 	--spawn-rate 5 \
 	--run-time 5m \
@@ -40,7 +40,7 @@ poetry run python bench/run_headless.py \
 ### Execução interativa
 
 ```bash
-locust -f bench/locustfile.py --host https://atlas.dev.example.com
+locust -f bench/locustfile.py --host http://localhost:8000
 ```
 
 > Ajuste o host conforme o ambiente alvo. O cenário autentica usando as credenciais `admin@acme.com` / `admin`.
@@ -51,7 +51,7 @@ Para validar _throughput_ máximo de endpoints estáticos (
 ex.: `/health`), use o wrk:
 
 ```bash
-wrk -t4 -c128 -d60s https://atlas.dev.example.com/health
+wrk -t4 -c128 -d60s http://localhost:8000/health
 ```
 
 ## Métricas de saída
@@ -62,6 +62,6 @@ wrk -t4 -c128 -d60s https://atlas.dev.example.com/health
 
 ## Próximos passos sugeridos
 
-- ✅ Smoke test Locust integrado ao pipeline de PR (`.github/workflows/pr.yml` → job `locust-smoke`) com guardrails de 1.5s/1% e artefatos CSV/Markdown.
+- ⚠️ Smoke test Locust integrado ao pipeline de PR (`.github/workflows/pr.yml` → job `locust-smoke`) – workflow existe, falta validar execução nos runners disponíveis.
 - Adicionar cenários que publiquem documentos em lote antes das consultas.
 - Armazenar artefatos com os relatórios de teste para comparação histórica.

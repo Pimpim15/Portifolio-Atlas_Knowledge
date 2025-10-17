@@ -14,6 +14,11 @@
           Senha
           <input v-model="password" type="password" autocomplete="current-password" required />
         </label>
+        <label v-if="showMfaField">
+          Código MFA
+          <input v-model="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="6" />
+        </label>
+        <small v-if="showMfaField" class="hint">Abra seu autenticador e copie o código de 6 dígitos.</small>
         <button type="submit" :disabled="isLoading">
           {{ isLoading ? 'Entrando...' : 'Entrar' }}
         </button>
@@ -33,18 +38,27 @@ const router = useRouter();
 const authStore = useAuthStore();
 const email = ref('admin@acme.com');
 const password = ref('admin');
+const mfaCode = ref('');
 const error = ref('');
 const isLoading = ref(false);
+const showMfaField = ref(false);
 
 const onSubmit = async () => {
   error.value = '';
   isLoading.value = true;
   try {
-    await authStore.login({ email: email.value, password: password.value });
+    await authStore.login({
+      email: email.value,
+      password: password.value,
+      mfa_code: mfaCode.value || undefined,
+    });
     router.push({ name: 'home' });
   } catch (err: unknown) {
     const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
     error.value = detail ?? 'Não foi possível autenticar. Verifique as credenciais e tente novamente.';
+    if (detail && detail.toLowerCase().includes('mfa code')) {
+      showMfaField.value = true;
+    }
   } finally {
     isLoading.value = false;
   }

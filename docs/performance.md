@@ -1,7 +1,8 @@
 # Atlas Knowledge – Guia de Benchmarks
 
 Este documento descreve como executar, validar e publicar os testes de carga oficiais
-utilizando os cenários fornecidos em `bench/`.
+utilizando os cenários fornecidos em `bench/`. Até o momento apenas o cenário local foi
+executado; ambientes `stage`/`prod` ainda dependem do provisionamento Terraform.
 
 ## Pré-requisitos
 
@@ -12,6 +13,9 @@ utilizando os cenários fornecidos em `bench/`.
   fora do stack local.
 
 ## Execução padrão (stage)
+
+> Ainda não existe um ambiente `stage` provisionado. Use esta seção como referência para quando
+> o deploy cloud estiver habilitado. Enquanto isso, execute o script apontando para o stack local.
 
 ```powershell
 # 1. Certifique-se de que o ambiente alvo está saudável
@@ -28,8 +32,8 @@ poetry run python bench/run_headless.py `
   --max-fail-rate 0.01
 ```
 
-> Ajuste `--users`, `--run-time` e os limites conforme os SLOs de cada ambiente. Para smoke tests,
-> utilize valores menores (ex.: `--users 5`, `--run-time 1m`).
+> Ajuste `--users`, `--run-time` e os limites conforme os SLOs de cada ambiente. Para smoke tests ou
+> execução local, utilize valores menores (ex.: `--users 5`, `--run-time 1m`, `--host http://localhost:8000`).
 
 ## Resultados gerados
 

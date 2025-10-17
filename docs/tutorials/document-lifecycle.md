@@ -17,7 +17,7 @@ Este passo a passo demonstra como um time operacional usa o Atlas Knowledge para
 
 ## 3. Localizar runbooks existentes
 
-1. Use o campo de busca para procurar "Runbook".
+1. Use o campo de busca para procurar "Runbook". Caso nenhum resultado apareça, execute o passo 6 (reindex) antes de prosseguir.
 2. Valide que os cartões mostram `snippet`, tags e data relativa.
 3. Clique em um item para abrir o modal de detalhes; verifique campos `Versão`, `Atualizado por` e tags.
 
@@ -39,7 +39,7 @@ Este passo a passo demonstra como um time operacional usa o Atlas Knowledge para
 
 ## 6. Reindexar pela API
 
-1. Copie o `Id` do documento.
+1. Copie o `Id` do documento (ou apenas rode a reindex para todos os seeds após subir o ambiente).
 2. Usando o terminal PowerShell:
 
    ```powershell
@@ -48,7 +48,7 @@ Este passo a passo demonstra como um time operacional usa o Atlas Knowledge para
    Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs/reindex' -Headers $headers
    ```
 
-3. Retorne à UI e abra o painel de reindex. O job criado deve aparecer com status `running` e evoluir para `success`.
+3. Retorne à UI e abra o painel de reindex. O job criado deve aparecer com status `running` e evoluir para `success`. Este passo é obrigatório depois do bootstrap para que a busca e os insights funcionem.
 
 ## 7. Verificar estatísticas
 
