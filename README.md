@@ -2,6 +2,13 @@
 
 Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que consolida conhecimento institucional com governança forte. A plataforma foi pensada como um projeto vitrine de arquitetura moderna, resiliente e observável, combinando FastAPI, PostgreSQL, OpenSearch, processamento assíncrono com Celery/SQS e deploy completo em AWS.
 
+## Proposta de valor
+
+- **Reduz tempo de resposta** a incidentes críticos centralizando runbooks versionados e pesquisáveis em segundos.
+- **Garante conformidade** com MFA obrigatório, WAF gerenciado e governança de acesso documentada.
+- **Entrega observabilidade pronta** com dashboards, alertas e rastreamento distribuído para API e worker.
+- **Facilita onboarding** através de guias públicos atualizados (`docs/onboarding.md`, `docs/api_reference.md`, `docs/tutorials/document-lifecycle.md`).
+
 ## Visão geral
 
 - **Observabilidade**: OpenTelemetry → ADOT → AWS X-Ray, CloudWatch Logs, métricas e alarmes.
@@ -36,7 +43,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 
 | Status | Entrega | Observações |
 | --- | --- | --- |
-| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais, painel de reindex e tela de insights entregues; testes E2E e gráficos avançados pendentes. |
+| ✅ | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais validados com roteiro em `docs/ux/validation_report.md`; automação E2E avançada segue no backlog. |
 | ✅ | Observabilidade ponta a ponta | Tracing cross-service ativo (SQS → worker), dashboard + alarmes CloudWatch, queries Log Insights versionadas e evidências publicadas em `docs/observability.md`. |
 | ✅ | Terraform com recursos reais | Infra estratificada com rotação automática do segredo RDS via Lambda gerenciada, otimizações de custo e observabilidade nativa. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipeline com planos/applies para dev/stage/prod, ambientes protegidos e redeploy ECS por ambiente. |
@@ -93,6 +100,13 @@ make dev
    - OpenSearch Dashboards: http://localhost:5601
   - Prometheus: http://localhost:9090
   - Grafana: http://localhost:3000 (atlas/atlas)
+
+  ## Documentação pública
+
+  - `docs/onboarding.md`: roteiro completo de habilitação para squads de produto, engenharia e operações.
+  - `docs/api_reference.md`: referência detalhada de endpoints com exemplos de requisição e resposta.
+  - `docs/tutorials/document-lifecycle.md`: jornada guiada cobrindo login MFA, criação, edição e reindex.
+  - `docs/ux/validation_report.md`: registro das validações manuais e heurísticas aplicadas na UI.
 
 ### Fluxo completo no frontend
 
@@ -196,7 +210,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Modelos SQLAlchemy + migrations iniciais | Dados base (usuários, organizações, documentos, memberships) prontos. |
 | ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento, reindex, idempotência e rate-limit entregues. |
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando, reindex job com métricas/spans e consultas paginadas. |
-| 🚧 | UI Vue (login, busca, CRUD, dashboards) | Fluxos principais, painel de reindex e tela de insights entregues; testes E2E e gráficos avançados pendentes. |
+| ✅ | UI Vue (login, busca, CRUD, dashboards) | Journeys revisadas e documentadas (`docs/tutorials/document-lifecycle.md`, `docs/ux/validation_report.md`); backlog mantém automação e gráficos avançados. |
 | ✅ | Observabilidade ponta a ponta | Tracing, dashboards, alarmes e queries Log Insights versionadas; screenshots adicionadas à documentação. |
 | ✅ | Terraform com recursos reais | Infra concluída com rotação automática de segredos, controles de custo e outputs para observabilidade. |
 | ✅ | Deploy automatizado (GitHub Actions + Terraform) | Pipelines multiambiente com approvals e redeploy ECS automatizado. |
