@@ -41,6 +41,16 @@ não foram aplicados.
 - As regras de alerta residem em `infra/prometheus/rules/atlas-alerts.yml`; conecte-as a um Alertmanager
   ou ferramenta equivalente para receber notificações reais.
 
+## Validação automatizada
+
+Execute os testes de observabilidade (API + worker) sempre que alterar instrumentações ou métricas:
+
+```powershell
+poetry run python scripts/validate_observability.py
+```
+
+O script roda as suítes unitárias que conferem cabeçalhos de correlação, métricas Prometheus e spans do worker.
+
 ## Como executar análises rápidas
 
 ```powershell

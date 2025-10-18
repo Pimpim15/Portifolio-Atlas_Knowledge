@@ -467,3 +467,25 @@ def test_handle_message_marks_error_after_max_attempts(monkeypatch: pytest.Monke
     assert client.visibility_called is False
     assert error_marks == [(job_id, job_item_id, "boom")]
     assert retry_counter.calls == []
+
+
+def test_main_starts_metrics_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    start_calls: list[int] = []
+    tracing_calls: list[str] = []
+
+    monkeypatch.setattr(run, "configure_logging", lambda: tracing_calls.append("logging"))
+    monkeypatch.setattr(run, "setup_tracing", lambda name: tracing_calls.append(name))
+    monkeypatch.setattr(run, "start_http_server", lambda port: start_calls.append(port))
+
+    def stop_loop() -> None:
+        raise StopIteration
+
+    monkeypatch.setattr(run, "_poll_loop", stop_loop)
+    monkeypatch.setattr(run, "get_settings", lambda: SimpleNamespace(worker_metrics_port=9101))
+
+    with pytest.raises(StopIteration):
+        run.main()
+
+    assert start_calls == [9101]
+    assert "logging" in tracing_calls
+    assert "atlas-worker" in tracing_calls

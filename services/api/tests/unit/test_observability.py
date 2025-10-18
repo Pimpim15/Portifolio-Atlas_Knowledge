@@ -16,3 +16,9 @@ def test_request_id_and_metrics_endpoint(client: TestClient) -> None:
     metrics_response = client.get("/metrics")
     assert metrics_response.status_code == 200
     assert "atlas_request_total" in metrics_response.text
+
+
+def test_request_id_forwarding(client: TestClient) -> None:
+    response = client.get("/healthz", headers={"x-request-id": "req-123"})
+    assert response.status_code == 200
+    assert response.headers.get("x-request-id") == "req-123"

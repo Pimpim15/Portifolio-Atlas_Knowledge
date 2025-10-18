@@ -181,6 +181,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/auth/logout' -Headers
   2. Após `docker compose up`, acesse http://localhost:3000 (atlas/atlas) e navegue até **Dashboards → Atlas**.
   3. Dashboards incluídos: `Atlas Overview` (API/worker) e `Atlas Reindex` (pipeline de reindex detalhado).
 - Guia de observabilidade com screenshots e comandos: [`docs/observability.md`](docs/observability.md).
+- Validação automatizada: `poetry run python scripts/validate_observability.py` executa testes que cobrem cabeçalhos de correlação, métricas Prometheus e spans do worker.
 - Alertas Prometheus (`infra/prometheus/rules/atlas-alerts.yml`):
   1. Já é carregado pelo Prometheus local; basta apontar o alertmanager de preferência.
   2. Ajuste os rótulos `service`/`severity` conforme a taxonomia local.
@@ -227,7 +228,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 | ✅ | Roteadores `auth`, `users`, `docs`, `search` com RBAC | Versionamento, reindex, idempotência e rate-limit entregues. |
 | ✅ | Pipeline SQS → worker → OpenSearch | Indexação/deleção funcionando localmente; reindex executa inline se SQS/worker indisponíveis. |
 | ⚠️ | UI Vue (login, busca, CRUD, dashboards) | Carece de testes E2E, cadastros administrativos e ajustes de UX fora do dashboard principal. |
-| ⚠️ | Observabilidade ponta a ponta | Instrumentação pronta, mas resta validar dashboards/alertas em AWS. |
+| ✅ | Observabilidade local validada | Middleware, métricas e spans cobertos por testes (`scripts/validate_observability.py`); evidências em AWS permanecem como próximo passo do roadmap. |
 | ⚠️ | Terraform com recursos reais | Módulos completos, dependem de parâmetros reais e ensaios de apply/destroy. |
 | ⚠️ | Deploy automatizado (GitHub Actions + Terraform) | Workflow criado, falta configurar secrets/roles e executar dry-runs. |
 | ⚠️ | Benchmarks Locust/wrk com métricas publicadas | Apenas cenário local registrado; ambientes remotos ainda não testados. |
