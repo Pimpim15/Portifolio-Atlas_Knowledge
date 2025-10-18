@@ -11,9 +11,9 @@ from redis import Redis
 
 from ..config import get_settings
 from ..db.models import User
-from ..deps import CurrentUser, decode_token, get_current_user, get_db, get_redis
+from ..deps import CurrentUser, RBACGuard, decode_token, get_current_user, get_db, get_redis
 from ..security.jwt import create_access_token, create_refresh_token
-from ..security.mfa import requires_mfa, verify_mfa_code
+from ..security.mfa import build_provisioning_uri, generate_mfa_secret, requires_mfa, verify_mfa_code
 from ..security.passwords import verify_password
 from ..security.ratelimit import init_rate_limiter
 from ..security.token_revocation import mark_token_revoked
@@ -37,6 +37,16 @@ class TokenPair(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh: str | None = None
+
+
+class MFASetupResponse(BaseModel):
+    secret: str
+    provisioning_uri: str
+    issuer: str
+
+
+class MFAActivateRequest(BaseModel):
+    code: str
 
 
 @router.post("/login", response_model=TokenPair)
@@ -105,5 +115,47 @@ async def logout(
         refresh_exp = refresh_payload.get("exp")
         if refresh_jti and refresh_exp:
             mark_token_revoked(redis, str(refresh_jti), int(refresh_exp))
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/mfa/setup", response_model=MFASetupResponse)
+@limiter.limit(settings.rate_limit_mutation)
+async def setup_mfa(
+    request: Request,
+    current_user: CurrentUser = Depends(RBACGuard([role.lower() for role in settings.admin_mfa_roles])),
+    session: AsyncSession = Depends(get_db),
+) -> MFASetupResponse:
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    secret = generate_mfa_secret()
+    user.mfa_secret = secret
+    user.mfa_enabled = False
+    await session.commit()
+
+    issuer = settings.jwt_issuer or "Atlas Knowledge"
+    provisioning_uri = build_provisioning_uri(secret, email=user.email, issuer=issuer)
+    return MFASetupResponse(secret=secret, provisioning_uri=provisioning_uri, issuer=issuer)
+
+
+@router.post("/mfa/activate", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(settings.rate_limit_mutation)
+async def activate_mfa(
+    request: Request,
+    payload: MFAActivateRequest,
+    current_user: CurrentUser = Depends(RBACGuard([role.lower() for role in settings.admin_mfa_roles])),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not user.mfa_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA setup not initialized")
+
+    verify_mfa_code(user, payload.code)
+    user.mfa_enabled = True
+    await session.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

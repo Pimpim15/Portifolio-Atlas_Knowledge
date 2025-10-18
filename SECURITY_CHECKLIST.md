@@ -18,7 +18,7 @@
 - [x] Idempotência em POST/PUT/PATCH/DELETE críticos.
 - [x] Sanitização de entradas (pydantic + validações custom).
 - [x] Logs sem PII sensível; mascaramento automático (`LOG_MASK_FIELDS`, ver `docs/security/logging_standards.md`).
-- [ ] Content Security Policy e headers (`X-Frame-Options`, `X-Content-Type-Options`) – middleware implementado, mas revisar valores antes da publicação.
+- [x] Content Security Policy e headers (`X-Frame-Options`, `X-Content-Type-Options`) – middleware coberto por `tests/api/test_security.py::test_security_headers_applied`.
 
 ## Dados & Armazenamento
 - [ ] RDS com encriptação at-rest, backups automáticos e testes de restauração – infraestrutura descrita em Terraform, resta validar apply/testes.
@@ -30,7 +30,7 @@
 ## DevSecOps
 - [x] Pre-commit com gitleaks.
 - [x] Dependabot + SAST (CodeQL) + SCA (Trivy/pip-audit) configurados no CI.
-- [ ] CI bloqueia PR < 85% cobertura ou lint falhando (`tools/ci/check_coverage.py`) – script existe, mas faltam gates obrigatórios na pipeline `pr.yml`.
+- [x] CI bloqueia PR < 85% cobertura ou lint falhando (`tools/ci/check_coverage.py`) – etapa `Enforce coverage >= 85%` no workflow `pr.yml`.
 - [x] Builds reprodutíveis (Poetry lock check, npm audit & lockfiles versionados, módulos Terraform versionados).
 - [ ] Revisão obrigatória e branch protection em `main` – política definida no doc, porém não aplicada no repositório público.
 

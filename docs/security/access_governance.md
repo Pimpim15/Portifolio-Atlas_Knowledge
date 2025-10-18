@@ -11,7 +11,7 @@
 ## Procedimento Mensal
 
 1. Exportar relatório `GET /users/admins` (rota interna) e comparar com planilha de gestores.
-2. Verificar se todos os administradores estão com MFA ativo.
+2. Verificar se todos os administradores estão com MFA ativo (consultar `/auth/mfa/setup` logs conforme [guia de onboarding](mfa_onboarding.md)).
 3. Desativar (flag `is_active = false`) usuários sem justificativa válida.
 4. Registrar evidências no Atlas (categoria **Auditoria**).
 

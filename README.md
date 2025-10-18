@@ -226,6 +226,7 @@ Confira a lista completa em [`SECURITY_CHECKLIST.md`](SECURITY_CHECKLIST.md). De
 - Módulos Terraform cobrem WAF, SG, HTTPS e IAM, mas carecem de validação em ambiente provisionado.
 - SAST/DAST (CodeQL, Trivy), Dependabot, pip-audit, npm audit e gitleaks prontos no CI.
 - Políticas formais documentadas em [`docs/security`](docs/security); backups/testes de restauração devem ser executados antes da release.
+- Fluxo de onboarding MFA documentado em [`docs/security/mfa_onboarding.md`](docs/security/mfa_onboarding.md) com evidências centralizadas em [`docs/security/compliance_evidence.md`](docs/security/compliance_evidence.md).
 
 ## Roadmap atualizado
 

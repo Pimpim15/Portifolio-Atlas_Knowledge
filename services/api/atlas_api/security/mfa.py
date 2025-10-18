@@ -17,10 +17,10 @@ def requires_mfa(user: User) -> bool:
     settings = get_settings()
     if not settings.enforce_admin_mfa:
         return False
-    if not user.mfa_enabled or not user.mfa_secret:
-        return False
     enforced_roles = {role.lower() for role in settings.admin_mfa_roles}
-    return any(role in enforced_roles for role in _user_roles(user))
+    if not any(role in enforced_roles for role in _user_roles(user)):
+        return False
+    return bool(user.mfa_enabled and user.mfa_secret)
 
 
 def verify_mfa_code(user: User, code: str | None) -> None:
@@ -42,3 +42,16 @@ def bootstrap_admin_mfa_secret(user: User) -> None:
     if user.email == "admin@acme.com" and not user.mfa_secret:
         user.mfa_secret = settings.admin_bootstrap_mfa_secret
         user.mfa_enabled = True
+
+
+def generate_mfa_secret() -> str:
+    """Cria um segredo TOTP aleatório para onboarding de MFA."""
+
+    return pyotp.random_base32()  # 160 bits por padrão
+
+
+def build_provisioning_uri(secret: str, *, email: str, issuer: str) -> str:
+    """Gera URI compatível com apps autenticadores (otpauth://)."""
+
+    totp = pyotp.TOTP(secret)
+    return totp.provisioning_uri(name=email, issuer_name=issuer)
