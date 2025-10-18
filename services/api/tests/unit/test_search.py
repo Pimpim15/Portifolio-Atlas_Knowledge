@@ -103,3 +103,39 @@ def test_search_fallbacks_to_database_on_opensearch_error(
 
     assert response.status_code == 200
     assert response.json() == expected_response.model_dump()
+
+
+def test_search_fallbacks_to_database_when_opensearch_returns_empty(
+    client: TestClient, authenticated_user: CurrentUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected_response = search_module.SearchResponse(
+        results=[
+            search_module.SearchResponseItem(
+                id="3",
+                title="Doc local",
+                snippet="Resumo",
+                tags=["emergencia"],
+            )
+        ],
+        total=1,
+    )
+
+    async def fake_search_database(q: str, filter_tags: list[str], current_user: CurrentUser, session: object) -> search_module.SearchResponse:
+        assert q == ""
+        assert filter_tags == []
+        assert current_user.id == authenticated_user.id
+        return expected_response
+
+    def fake_search_opensearch(q: str, filter_tags: list[str], current_user: CurrentUser) -> search_module.SearchResponse:
+        assert q == ""
+        assert not filter_tags
+        assert current_user.id == authenticated_user.id
+        return search_module.SearchResponse(results=[], total=0)
+
+    monkeypatch.setattr(search_module, "_search_database", fake_search_database)
+    monkeypatch.setattr(search_module, "_search_opensearch", fake_search_opensearch)
+
+    response = client.get("/search")
+
+    assert response.status_code == 200
+    assert response.json() == expected_response.model_dump()

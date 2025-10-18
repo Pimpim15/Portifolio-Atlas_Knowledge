@@ -15,6 +15,7 @@ from .search.mappings import DOC_INDEX
 from .search.os_client import ensure_index_exists, get_client
 from .security.mfa import bootstrap_admin_mfa_secret
 from .security.passwords import hash_password, verify_password
+from .tasks.indexing import enqueue_document
 
 logger = get_logger(component="api", module="bootstrap")
 
@@ -26,11 +27,14 @@ async def init_application() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     async with SessionLocal() as session:
-        await _ensure_seed_data(session)
+        created_documents = await _ensure_seed_data(session)
     _ensure_search_index()
+    _index_seed_documents(created_documents)
 
 
-async def _ensure_seed_data(session: AsyncSession) -> None:
+async def _ensure_seed_data(session: AsyncSession) -> list[Document]:
+    created_documents: list[Document] = []
+
     org_result = await session.execute(select(Organization).where(Organization.name == "Acme Corp"))
     org = org_result.scalar_one_or_none()
     if org is None:
@@ -124,8 +128,10 @@ async def _ensure_seed_data(session: AsyncSession) -> None:
                 created_by=user.id,
             )
         )
+        created_documents.append(doc)
 
     await session.commit()
+    return created_documents
 
 
 def _ensure_search_index() -> None:
@@ -134,3 +140,14 @@ def _ensure_search_index() -> None:
         ensure_index_exists(client, DOC_INDEX)
     except Exception:  # pragma: no cover - infra dependency
         logger.exception("search_index_bootstrap_failed")
+
+
+def _index_seed_documents(documents: list[Document]) -> None:
+    if not documents:
+        return
+
+    for document in documents:
+        try:
+            enqueue_document(document)
+        except Exception:  # pragma: no cover - defensive log only
+            logger.exception("seed_document_index_failed", document_id=str(document.id))

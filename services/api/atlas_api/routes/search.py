@@ -187,7 +187,13 @@ async def search(
     filter_tags = [tag.strip().lower() for tag in (tags or "").split(",") if tag.strip()]
 
     try:
-        return _search_opensearch(q.strip(), filter_tags, current_user)
+        search_response = _search_opensearch(q.strip(), filter_tags, current_user)
+        if search_response.total > 0:
+            return search_response
+        logger.debug(
+            "search_opensearch_empty_fallback",
+            extra={"query": q, "tags": filter_tags},
+        )
     except OpenSearchException:
         logger.exception(
             "search_opensearch_failed",

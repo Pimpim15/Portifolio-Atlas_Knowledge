@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from botocore.exceptions import ClientError
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -216,18 +218,20 @@ def test_handle_message_retries_with_backoff(monkeypatch: pytest.MonkeyPatch) ->
         lambda job, item, reason: retry_marks.append((job, item, reason)),
     )
 
-    delete_called = False
-
     class FakeClient:
         def __init__(self) -> None:
+            self.sent: list[dict[str, Any]] = []
+            self.deleted: list[dict[str, Any]] = []
             self.visibility: list[dict[str, Any]] = []
+
+        def send_message(self, **kwargs: Any) -> None:  # noqa: ANN401
+            self.sent.append(kwargs)
+
+        def delete_message(self, **kwargs: Any) -> None:  # noqa: ANN401
+            self.deleted.append(kwargs)
 
         def change_message_visibility(self, **kwargs: Any) -> None:  # noqa: ANN401
             self.visibility.append(kwargs)
-
-        def delete_message(self, **_kwargs: Any) -> None:  # noqa: ANN401
-            nonlocal delete_called
-            delete_called = True
 
     client = FakeClient()
     settings = Settings(
@@ -262,7 +266,106 @@ def test_handle_message_retries_with_backoff(monkeypatch: pytest.MonkeyPatch) ->
         receipt_handle="handle",
     )
 
-    assert delete_called is False
+    assert client.sent and client.sent[0]["DelaySeconds"] == 60
+    assert client.sent[0]["MessageBody"] == json.dumps(payload)
+    assert client.deleted and client.deleted[0]["ReceiptHandle"] == "handle"
+    assert not client.visibility
+    assert retry_counter.calls == ["index", "index_inc"]
+    assert retry_marks == [(job_id, job_item_id, "boom")]
+
+
+def test_handle_message_retries_with_visibility_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = uuid.uuid4()
+    job_item_id = uuid.uuid4()
+
+    def fake_process_message(
+        body: dict[str, Any],
+        client: Any,
+        *,
+        attempt: int,
+        max_attempts: int,
+    ) -> run.ProcessingOutcome:  # noqa: ANN401
+        assert attempt == 2
+        assert max_attempts == 5
+        return run.ProcessingOutcome(
+            success=False,
+            action="index",
+            job_id=job_id,
+            job_item_id=job_item_id,
+            error_message="boom",
+        )
+
+    monkeypatch.setattr(run, "_process_message", fake_process_message)
+
+    class CounterStub:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def labels(self, action: str) -> SimpleNamespace:
+            self.calls.append(action)
+            return SimpleNamespace(inc=lambda: self.calls.append(f"{action}_inc"))
+
+    retry_counter = CounterStub()
+    monkeypatch.setattr(run, "WORKER_RETRY_COUNT", retry_counter)
+
+    retry_marks: list[tuple[uuid.UUID, uuid.UUID, str]] = []
+    monkeypatch.setattr(
+        run,
+        "mark_job_item_retry",
+        lambda job, item, reason: retry_marks.append((job, item, reason)),
+    )
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.sent: list[dict[str, Any]] = []
+            self.deleted: list[dict[str, Any]] = []
+            self.visibility: list[dict[str, Any]] = []
+
+        def send_message(self, **kwargs: Any) -> None:  # noqa: ANN401
+            self.sent.append(kwargs)
+            raise ClientError({"Error": {"Code": "Throttling", "Message": "rate"}}, "SendMessage")
+
+        def delete_message(self, **kwargs: Any) -> None:  # noqa: ANN401
+            self.deleted.append(kwargs)
+
+        def change_message_visibility(self, **kwargs: Any) -> None:  # noqa: ANN401
+            self.visibility.append(kwargs)
+
+    client = FakeClient()
+    settings = Settings(
+        WORKER_MAX_ATTEMPTS=5,
+        WORKER_RETRY_BACKOFF_SECONDS=30,
+        WORKER_RETRY_BACKOFF_MAX_SECONDS=120,
+    )
+    sent_timestamp_ms = int(time.time() * 1000)
+    message = {
+        "MessageId": "retry",
+        "ReceiptHandle": "handle",
+        "MessageAttributes": {},
+        "Attributes": {
+            "SentTimestamp": str(sent_timestamp_ms),
+            "ApproximateReceiveCount": "2",
+        },
+    }
+    payload = {
+        "action": "index",
+        "document": {"id": "doc"},
+        "job_id": str(job_id),
+        "job_item_id": str(job_item_id),
+    }
+
+    run._handle_message(
+        settings=settings,
+        client=client,
+        queue_url="https://queue",
+        os_client={},
+        message=message,
+        payload=payload,
+        receipt_handle="handle",
+    )
+
+    assert client.sent and client.sent[0]["DelaySeconds"] == 60
+    assert not client.deleted
     assert client.visibility and client.visibility[0]["VisibilityTimeout"] == 60
     assert retry_counter.calls == ["index", "index_inc"]
     assert retry_marks == [(job_id, job_item_id, "boom")]
@@ -317,6 +420,9 @@ def test_handle_message_marks_error_after_max_attempts(monkeypatch: pytest.Monke
         def __init__(self) -> None:
             self.deleted = False
             self.visibility_called = False
+
+        def send_message(self, **kwargs: Any) -> None:  # noqa: ANN401
+            raise AssertionError("send_message should not be called when attempts exhausted")
 
         def delete_message(self, **_kwargs: Any) -> None:  # noqa: ANN401
             self.deleted = True

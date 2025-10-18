@@ -350,34 +350,62 @@ def _handle_message(
 
     backoff_seconds = getattr(settings, "worker_retry_backoff_seconds", 30)
     max_backoff_seconds = getattr(settings, "worker_retry_backoff_max_seconds", 300)
-    visibility_timeout = max(1, min(backoff_seconds * attempt, max_backoff_seconds))
+    delay_seconds = max(1, min(int(backoff_seconds * attempt), max_backoff_seconds))
 
+    requeue_succeeded = False
+    message_attributes = message.get("MessageAttributes") or {}
     try:
-        client.change_message_visibility(
+        client.send_message(
             QueueUrl=queue_url,
-            ReceiptHandle=receipt_handle,
-            VisibilityTimeout=int(visibility_timeout),
+            MessageBody=json.dumps(payload),
+            DelaySeconds=delay_seconds,
+            MessageAttributes=message_attributes,
         )
     except (BotoCoreError, ClientError):  # pragma: no cover - infra failure
         logger.exception(
-            "sqs_change_visibility_failed",
+            "sqs_requeue_failed",
             payload=payload,
             attempt=attempt,
-            visibility_timeout=visibility_timeout,
+            delay_seconds=delay_seconds,
         )
     else:
-        WORKER_RETRY_COUNT.labels(outcome.action).inc()
-
-    if outcome.job_id and outcome.job_item_id:
         try:
-            mark_job_item_retry(outcome.job_id, outcome.job_item_id, failure_reason)
-        except Exception:  # pragma: no cover - defensive logging
-            logger.exception(
-                "worker_mark_job_item_retry_failed",
-                job_id=str(outcome.job_id),
-                job_item_id=str(outcome.job_item_id),
-                failure_reason=failure_reason,
+            client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+        except (BotoCoreError, ClientError):  # pragma: no cover - infra failure
+            logger.exception("sqs_delete_failed", payload=payload)
+        else:
+            requeue_succeeded = True
+
+    if requeue_succeeded:
+        WORKER_RETRY_COUNT.labels(outcome.action).inc()
+    else:
+        try:
+            client.change_message_visibility(
+                QueueUrl=queue_url,
+                ReceiptHandle=receipt_handle,
+                VisibilityTimeout=delay_seconds,
             )
+        except (BotoCoreError, ClientError):  # pragma: no cover - infra failure
+            logger.exception(
+                "sqs_change_visibility_failed",
+                payload=payload,
+                attempt=attempt,
+                visibility_timeout=delay_seconds,
+            )
+        else:
+            WORKER_RETRY_COUNT.labels(outcome.action).inc()
+
+    try:
+        if outcome.job_id and outcome.job_item_id:
+            mark_job_item_retry(outcome.job_id, outcome.job_item_id, failure_reason)
+    except Exception:  # pragma: no cover - defensive logging
+        logger.exception(
+            "worker_mark_job_item_retry_failed",
+            job_id=str(outcome.job_id) if outcome.job_id else None,
+            job_item_id=str(outcome.job_item_id) if outcome.job_item_id else None,
+            failure_reason=failure_reason,
+        )
+
 
 
 def _poll_loop() -> None:
