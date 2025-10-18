@@ -2,13 +2,31 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+if sys.platform.startswith("win"):
+    # Windows default (Proactor) não é suportado pelo psycopg async.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./atlas_test.db"
+os.environ["OPENSEARCH_STUB"] = "1"
+
+from services.api.atlas_api.config import get_settings
 from services.api.atlas_api.deps import get_redis
 from services.api.atlas_api.main import create_app
+
+get_settings.cache_clear()
+
+_db_path = Path("atlas_test.db")
+if _db_path.exists():
+    _db_path.unlink()
 
 
 class _InMemoryRedis:

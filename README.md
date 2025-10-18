@@ -42,7 +42,7 @@ Atlas Knowledge é um catálogo interno multi-tenant com busca full-text que con
 
 ### 🚧 Limitações conhecidas
 
-- Seeds de documentos não são indexados automaticamente no OpenSearch; execute `/docs/reindex` após subir o stack para popular a busca.
+- Seeds dependem do worker para chegarem ao OpenSearch; em ambientes sem fila ativa o fallback para PostgreSQL mantém a busca funcional, mas métricas de índice não refletem os dados até o worker consumir a fila.
 - Observabilidade em AWS (CloudWatch dashboards, alertas e traces via ADOT) depende da aplicação dos módulos Terraform e ainda não possui evidências de execução real.
 - WAF, Budgets, TLS via ACM e rotação automática de secrets exigem ativação explícita no Terraform e não foram comprovados em um ambiente gerenciado.
 - O frontend carece de gestão de usuários, redefinição de senha, billing/go-to-market e automação E2E; estilos fora do dashboard principal ainda usam componentes básicos.
@@ -110,18 +110,20 @@ make dev
   - Prometheus: http://localhost:9090
   - Grafana: http://localhost:3000 (atlas/atlas)
 
-5. Execute uma reindexação assim que o seed estiver disponível para que a busca e o painel de insights retornem resultados:
+5. Garanta que o pipeline de seeds → SQS → worker está saudável executando a suíte rápida:
 
 ```powershell
-$login = Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/auth/login' -Body (@{ email = 'admin@acme.com'; password = 'admin'; mfa_code = '<TOTP>' } | ConvertTo-Json) -ContentType 'application/json'
-Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/docs/reindex' -Headers @{ Authorization = "Bearer $($login.access)" }
+poetry run python scripts/validate_backend_flow.py
 ```
+
+O comando roda os testes de bootstrap, fallback do `/search`, integração de seeds e retries do worker. Se precisar forçar uma reindexação manual, mantenha o fluxo documentado em `docs/backend_reindex_flow.md`.
 
 ## Documentação pública
 
 - `docs/onboarding.md`: roteiro de habilitação com anotações sobre gaps atuais.
 - `docs/api_reference.md`: referência detalhada de endpoints com exemplos de requisição e resposta.
 - `docs/tutorials/document-lifecycle.md`: jornada guiada cobrindo login MFA, criação, edição e reindex (inclui nota sobre reindex manual).
+- `docs/backend_reindex_flow.md`: arquitetura do pipeline API ↔ SQS ↔ worker, mecanismos de idempotência e script de validação.
 - `docs/ux/validation_report.md`: registro das validações manuais e heurísticas aplicadas, com limitações documentadas.
 
 ### Fluxo completo no frontend
