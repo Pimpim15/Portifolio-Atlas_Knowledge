@@ -118,6 +118,13 @@ poetry run python scripts/validate_backend_flow.py
 
 O comando roda os testes de bootstrap, fallback do `/search`, integração de seeds e retries do worker. Se precisar forçar uma reindexação manual, mantenha o fluxo documentado em `docs/backend_reindex_flow.md`.
 
+### Alternar entre LocalStack e AWS real
+
+- Por padrão o `.env` define `AWS_PROVIDER=local`, fazendo a API/worker apontarem para o LocalStack do `docker compose`.
+- Para testar contra uma conta AWS real, basta alterar para `AWS_PROVIDER=aws` (as variáveis `AWS_ENDPOINT_URL` e `SQS_QUEUE_URL` são ignoradas nesse modo) e exportar credenciais válidas via `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` ou perfil (`AWS_PROFILE`).
+- O nome da fila pode continuar em `SQS_QUEUE_NAME=docs-events`. Se ela não existir, a aplicação cria automaticamente (`ensure_queue_exists`) e atualiza o `SQS_QUEUE_URL` internamente quando detectar o ambiente real.
+- Caso já possua o `SQS_QUEUE_URL` definitivo, é só preenchê-lo no `.env` (ou secret da pipeline) — o toggle continua funcionando da mesma forma.
+
 ## Documentação pública
 
 - `docs/onboarding.md`: roteiro de habilitação com anotações sobre gaps atuais.

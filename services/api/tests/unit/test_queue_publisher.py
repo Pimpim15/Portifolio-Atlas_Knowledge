@@ -32,7 +32,7 @@ def test_send_message_includes_trace_headers(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(publisher, "get_settings", lambda: SimpleNamespace(sqs_queue_url="https://queue"))
     monkeypatch.setattr(publisher, "get_sqs_client", lambda: FakeClient())
-    monkeypatch.setattr(publisher, "ensure_queue_exists", lambda queue_url: None)
+    monkeypatch.setattr(publisher, "ensure_queue_exists", lambda queue_url: "https://queue")
 
     tracer = trace.get_tracer("test")
     with tracer.start_as_current_span("parent"):

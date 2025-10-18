@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
     opensearch_endpoint: str = Field("http://localhost:9200", alias="OPENSEARCH_ENDPOINT")
     sqs_queue_url: str | None = Field(None, alias="SQS_QUEUE_URL")
+    sqs_queue_name: str | None = Field("docs-events", alias="SQS_QUEUE_NAME")
+    aws_provider: Literal["local", "aws"] = Field("local", alias="AWS_PROVIDER")
     aws_region: str = Field("us-east-1", alias="AWS_REGION")
     aws_access_key_id: str | None = Field(None, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str | None = Field(None, alias="AWS_SECRET_ACCESS_KEY")
@@ -99,6 +101,13 @@ class Settings(BaseSettings):
         default_factory=lambda: ["email", "user_email", "user_id", "subject", "customer_email"],
         alias="LOG_MASK_FIELDS",
     )
+
+    @field_validator("sqs_queue_url", "aws_endpoint_url", mode="before")
+    @classmethod
+    def _empty_string_as_none(cls, value: str | None) -> str | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache(maxsize=1)

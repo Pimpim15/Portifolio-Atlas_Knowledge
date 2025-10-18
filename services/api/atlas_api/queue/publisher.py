@@ -51,16 +51,19 @@ def _send_message(payload: dict[str, Any]) -> bool:
     """
 
     settings = get_settings()
-    if not settings.sqs_queue_url:
+    if not settings.sqs_queue_url and not settings.sqs_queue_name:
         logger.debug("sqs_queue_url_not_configured", payload_type=payload.get("action"))
         return False
 
     client = get_sqs_client()
-    ensure_queue_exists(settings.sqs_queue_url)
+    queue_url = ensure_queue_exists(settings.sqs_queue_url)
+    if not queue_url:
+        logger.debug("sqs_queue_url_not_resolved", payload_type=payload.get("action"))
+        return False
     message_attributes = _build_trace_message_attributes()
     try:
         params: dict[str, Any] = {
-            "QueueUrl": settings.sqs_queue_url,
+            "QueueUrl": queue_url,
             "MessageBody": json.dumps(payload),
         }
         if message_attributes:

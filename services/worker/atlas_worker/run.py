@@ -410,20 +410,19 @@ def _handle_message(
 
 def _poll_loop() -> None:
     settings = get_settings()
-    if not settings.sqs_queue_url:
-        logger.error("sqs_queue_url_not_configured")
+    client = get_sqs_client()
+    queue_url = ensure_queue_exists(settings.sqs_queue_url)
+    if not queue_url:
+        logger.error("sqs_queue_unavailable")
         time.sleep(5)
         return
-
-    client = get_sqs_client()
-    ensure_queue_exists(settings.sqs_queue_url)
     os_client = get_client()
     ensure_index_exists(os_client, DOC_INDEX)
 
     while True:
         try:
             response = client.receive_message(
-                QueueUrl=settings.sqs_queue_url,
+                QueueUrl=queue_url,
                 MaxNumberOfMessages=10,
                 WaitTimeSeconds=20,
                 VisibilityTimeout=60,
@@ -435,6 +434,10 @@ def _poll_loop() -> None:
                 "sqs_receive_failed",
                 error=str(exc),
             )
+            queue_url = ensure_queue_exists(queue_url)
+            if not queue_url:
+                time.sleep(5)
+                queue_url = ensure_queue_exists(settings.sqs_queue_url)
             time.sleep(5)
             continue
 
@@ -459,13 +462,13 @@ def _poll_loop() -> None:
                     "worker_invalid_json",
                     body=body_raw,
                 )
-                client.delete_message(QueueUrl=settings.sqs_queue_url, ReceiptHandle=receipt_handle)
+                client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
                 continue
 
             _handle_message(
                 settings=settings,
                 client=client,
-                queue_url=settings.sqs_queue_url,
+                queue_url=queue_url,
                 os_client=os_client,
                 message=message,
                 payload=payload,
